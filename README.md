@@ -12,7 +12,7 @@ Botania Applie is a Minecraft 1.12.2 mod that deeply integrates Botania's mana s
 
 ---
 
-## 主要特性 / Main Features
+## 主要内容 / Main Features
 
 ### 魔力存储元件 / Mana Storage Cells
 
@@ -21,14 +21,12 @@ Botania Applie is a Minecraft 1.12.2 mod that deeply integrates Botania's mana s
 - 支持多种容量的魔力存储元件：1k、4k、16k、64k、256k、1M、4M、16M、64M、256M、1G
 - 可直接插入AE2驱动器中使用
 - 支持在ME终端中查看存储的魔力
-- 提供魔力存储组件用于合成更高级的元件
 
 **English**
 
 - Multiple capacity mana storage cells: 1k, 4k, 16k, 64k, 256k, 1M, 4M, 16M, 64M, 256M, 1G
 - Compatible with AE2 drives
 - View stored mana in ME terminals
-- Mana storage components for crafting advanced cells
 
 ---
 
@@ -80,30 +78,4 @@ Botania Applie is a Minecraft 1.12.2 mod that deeply integrates Botania's mana s
 | Forge | 14.23.5.2859+ |
 | Botania | r1.10-364 |
 | Applied Energistics 2 (UEL) | v0.56.7+ |
-| AE2FluidCraft-Rework | 2.7.10+ |
-
----
-
-## 安装 / Installation
-
-**中文**
-
-1. 安装 Minecraft 1.12.2 和 Forge
-2. 安装所有前置模组
-3. 将 `botania_applie-1.0.0.jar` 放入 `mods` 文件夹
-4. 启动游戏
-
-**English**
-
-1. Install Minecraft 1.12.2 and Forge
-2. Install all required dependencies
-3. Place `botania_applie-1.0.0.jar` into the `mods` folder
-4. Launch the game
-
----
-
-## 开发者 / Developer
-
-- **Mod ID**: `botania_applie`
-- **Package**: `nyonio`
-- **Version**: 1.0.0
+| AE2 Fluid Craft-Rework Unofficial | 2.7.10+ |
