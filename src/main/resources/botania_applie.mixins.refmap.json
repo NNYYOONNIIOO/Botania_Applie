@@ -1,0 +1,14 @@
+{
+  "mappings": {
+    "nyonio/coremod/mixin/ae2/gui/MixinGuiMEMonitorable": {
+      "handleMouseClick": "Lappeng/client/gui/AEBaseGui;func_184098_a(Lnet/minecraft/inventory/Slot;IILnet/minecraft/inventory/ClickType;)V"
+    }
+  },
+  "data": {
+    "searge": {
+      "nyonio/coremod/mixin/ae2/gui/MixinGuiMEMonitorable": {
+        "handleMouseClick": "Lappeng/client/gui/AEBaseGui;func_184098_a(Lnet/minecraft/inventory/Slot;IILnet/minecraft/inventory/ClickType;)V"
+      }
+    }
+  }
+}

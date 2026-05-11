@@ -1,0 +1,16 @@
+[
+{
+  "modid": "botania_applie",
+  "name": "Botania Applie",
+  "description": "植物应用 - Allows storing Botania mana in AE2 storage cells",
+  "version": "${version}",
+  "mcversion": "${mcversion}",
+  "url": "",
+  "updateUrl": "",
+  "authorList": ["Nyonio"],
+  "credits": "Thanks to the Botania and Applied Energistics 2 authors",
+  "logoFile": "",
+  "screenshots": [],
+  "dependencies": ["botania", "appliedenergistics2"]
+}
+]

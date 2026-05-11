@@ -1,0 +1,17 @@
+{
+    "type": "minecraft:crafting_shaped",
+    "pattern": [
+        "qrq",
+        "rcr",
+        "iii"
+    ],
+    "key": {
+        "q": { "item": "appliedenergistics2:quartz_glass" },
+        "r": { "item": "minecraft:redstone" },
+        "c": { "item": "botania_applie:mana_storage_component_4k" },
+        "i": { "item": "minecraft:iron_ingot" }
+    },
+    "result": {
+        "item": "botania_applie:mana_storage_cell_4k"
+    }
+}

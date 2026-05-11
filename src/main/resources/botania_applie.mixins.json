@@ -1,0 +1,19 @@
+{
+  "required": false,
+  "package": "nyonio.coremod.mixin.ae2",
+  "refmap": "botania_applie.mixins.refmap.json",
+  "target": "@env(DEFAULT)",
+  "minVersion": "0.8",
+  "compatibilityLevel": "JAVA_8",
+  "mixins": [
+    "MixinNetworkMonitor",
+    "MixinGridStorageCache",
+    "MixinNetworkInventoryHandler"
+  ],
+  "client": [
+    "gui.MixinGuiMEMonitorable"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

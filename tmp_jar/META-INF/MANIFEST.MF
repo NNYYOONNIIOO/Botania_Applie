@@ -1,0 +1,9 @@
+Manifest-Version: 1.0
+Implementation-Title: Botania_Applie
+Implementation-Version: 1.0.0
+Specification-Vendor: nyonio
+Specification-Title: botania_applie
+Implementation-Timestamp: 2026-05-10T12:58:19+0800
+Specification-Version: 1
+Implementation-Vendor: nyonio
+
