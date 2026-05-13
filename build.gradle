@@ -15,13 +15,16 @@ apply plugin: 'maven-publish'
 repositories {
     maven { url = 'https://cursemaven.com' }
     maven { url = 'https://maven.cleanroommc.com' }
+    flatDir {
+        dirs 'libs'
+    }
 }
 
-version = '1.0.0'
+version = '1.0.2'
 group = 'nyonio'
 archivesBaseName = 'botania_applie'
 
-sourceCompatibility = targetCompatibility = compileJava.sourceCompatibility = compileJava.targetCompatibility = '1.8' // Need this here so eclipse task generates correctly.
+sourceCompatibility = targetCompatibility = compileJava.sourceCompatibility = compileJava.targetCompatibility = '1.8'
 
 sourceSets {
     api
@@ -31,36 +34,19 @@ sourceSets.main.compileClasspath += sourceSets.api.output
 sourceSets.main.runtimeClasspath += sourceSets.api.output
 
 minecraft {
-    // The mappings can be changed at any time, and must be in the following format.
-    // snapshot_YYYYMMDD   Snapshot are built nightly.
-    // stable_#            Stables are built at the discretion of the MCP team.
-    // Use non-default mappings at your own risk. they may not always work.
-    // Simply re-run your setup task after changing the mappings to update your workspace.
-    //mappings channel: 'snapshot', version: '20171003-1.12'
     mappings channel: 'snapshot', version: '20171003-1.12'
-    // makeObfSourceJar = false // an Srg named sources jar is made by default. uncomment this to disable.
     
     accessTransformer = file('src/main/resources/META-INF/accesstransformer.cfg')
 
-    // Default run configurations.
-    // These can be tweaked, removed, or duplicated as needed.
     runs {
         client {
             workingDirectory project.file('run')
-
-            // Recommended logging data for a userdev environment
             property 'forge.logging.markers', 'SCAN,REGISTRIES,REGISTRYDUMP'
-
-            // Recommended logging level for the console
             property 'forge.logging.console.level', 'debug'
         }
 
         server {
-
-            // Recommended logging data for a userdev environment
             property 'forge.logging.markers', 'SCAN,REGISTRIES,REGISTRYDUMP'
-
-            // Recommended logging level for the console
             property 'forge.logging.console.level', 'debug'
         }
     }
@@ -73,17 +59,10 @@ tasks.withType(JavaCompile) {
 dependencies {
     minecraft 'net.minecraftforge:forge:1.12.2-14.23.5.2859'
     
-    // Required dependencies
     implementation fg.deobf("curse.maven:botania-225643:3330934")
     implementation fg.deobf("curse.maven:ae2-extended-life-570458:5411078")
-    implementation fg.deobf("curse.maven:ae2fluidcraft-rework-unofficial-1404390:7742544")
     
-    // Mixinbooter dependencies
-    annotationProcessor 'org.ow2.asm:asm-debug-all:5.2'
-    annotationProcessor 'com.google.guava:guava:21.0'
-    annotationProcessor 'com.google.code.gson:gson:2.8.9'
-    implementation ('zone.rong:mixinbooter:10.7') { transitive = false }
-    annotationProcessor ('zone.rong:mixinbooter:10.7') { transitive = false }
+    implementation files('libs/terminal_interaction_integration-1.0.jar')
 }
 
 jar {
@@ -96,17 +75,12 @@ jar {
             "Implementation-Version": "${version}",
             "Implementation-Vendor" :"nyonio",
             "Implementation-Timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ssZ"),
-            "FMLAT": "accesstransformer.cfg",
-            "MixinConfigs": "botania_applie.mixins.json"
+            "FMLAT": "accesstransformer.cfg"
         ])
     }
 }
 
-// Example configuration to allow publishing using the maven-publish task
-// This is the preferred method to reobfuscate your jar file
 jar.finalizedBy('reobfJar') 
-// However if you are in a multi-project build, dev time needs unobfed jar files, so you can delay the obfuscation until publishing by doing
-//publish.dependsOn('reobfJar')
 
 publishing {
     publications {

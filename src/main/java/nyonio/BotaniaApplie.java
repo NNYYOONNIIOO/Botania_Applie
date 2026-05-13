@@ -4,6 +4,7 @@ import net.minecraft.block.Block;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemBlock;
 import net.minecraftforge.client.event.ModelRegistryEvent;
+import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.RegistryEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.Mod.EventHandler;
@@ -15,6 +16,7 @@ import net.minecraftforge.fml.common.registry.GameRegistry;
 import net.minecraftforge.fml.common.network.simpleimpl.SimpleNetworkWrapper;
 import net.minecraftforge.fml.common.network.NetworkRegistry;
 import net.minecraftforge.fml.relauncher.Side;
+import nyonio.integration.terminal.ManaResourceProvider;
 import nyonio.network.CPacketManaContainerAction;
 import net.minecraftforge.fml.relauncher.SideOnly;
 import net.minecraftforge.registries.IForgeRegistry;
@@ -25,11 +27,11 @@ import nyonio.item.ItemManaPacket;
 import nyonio.item.ItemManaStorageCell;
 import nyonio.item.ItemManaStorageComponent;
 import nyonio.tile.TileFluixManaPool;
-import nyonio.integration.ae2fluidcraft.AE2FluidCraftIntegration;
+import nyonio.terminal_interaction_integration.api.ResourceRegistrationEvent;
 import org.apache.logging.log4j.Logger;
 import appeng.api.AEApi;
 
-@Mod(modid = BotaniaApplie.MODID, name = BotaniaApplie.NAME, version = BotaniaApplie.VERSION)
+@Mod(modid = BotaniaApplie.MODID, name = BotaniaApplie.NAME, version = BotaniaApplie.VERSION, dependencies = "required-after:appliedenergistics2;required-after:terminal_interaction_integration")
 @Mod.EventBusSubscriber
 public class BotaniaApplie
 {
@@ -93,6 +95,8 @@ public class BotaniaApplie
         AEApi.instance().storage().registerStorageChannel(ManaStorageChannel.class, ManaStorageChannel.INSTANCE);
         logger.info("ManaStorageChannel registered");
 
+        MinecraftForge.EVENT_BUS.register(new TerminalIntegrationHandler());
+
         fluixManaPool = new BlockFluixManaPool().setRegistryName(MODID, "fluix_mana_pool");
         fluixManaPoolItem = new ItemBlock(fluixManaPool).setRegistryName(MODID, "fluix_mana_pool").setUnlocalizedName("botania_applie.fluix_mana_pool").setCreativeTab(BotaniaApplieTab.INSTANCE);
         
@@ -133,15 +137,19 @@ public class BotaniaApplie
     {
         proxy.init(event);
 
-        // Register cell handler in init (following MekanismEnergistics pattern)
         AEApi.instance().registries().cell().addCellHandler(ManaCellHandler.INSTANCE);
 
         GameRegistry.registerTileEntity(TileFluixManaPool.class, "botania_applie:fluix_mana_pool");
 
-        // Register with AE2FluidCraft FakeItemRegister system
-        AE2FluidCraftIntegration.init();
-
         logger.info("Botania Applie mod initialized!");
+    }
+    
+    public static class TerminalIntegrationHandler {
+        @SubscribeEvent
+        public void onResourceRegistration(ResourceRegistrationEvent event) {
+            event.register(new ManaResourceProvider());
+            logger.info("[BotaniaApplie] ManaResourceProvider registered with Terminal Interaction Integration");
+        }
     }
 
     @SubscribeEvent

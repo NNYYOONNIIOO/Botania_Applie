@@ -1,0 +1,16 @@
+{
+    "type": "minecraft:crafting_shaped",
+    "pattern": [
+        "aea",
+        "efe",
+        "aea"
+    ],
+    "key": {
+        "a": { "item": "botania:manaresource", "data": 23 },
+        "e": { "item": "appliedenergistics2:material", "data": 9 },
+        "f": { "item": "botania:pool", "data": 0}
+    },
+    "result": {
+        "item": "botania_applie:fluix_mana_pool"
+    }
+}
