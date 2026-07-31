@@ -1,0 +1,113 @@
+buildscript {
+    repositories {
+        maven { url = 'https://maven.minecraftforge.net/' }
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'net.minecraftforge.gradle:ForgeGradle:3.+'
+    }
+}
+        
+apply plugin: 'net.minecraftforge.gradle'
+apply plugin: 'eclipse'
+apply plugin: 'maven-publish'
+
+repositories {
+    maven { url = 'https://cursemaven.com' }
+    maven { url = 'https://maven.cleanroommc.com' }
+    flatDir {
+        dirs 'libs'
+    }
+}
+
+version = '1.2.0'
+group = 'nyonio'
+archivesBaseName = 'botania_applie'
+
+sourceCompatibility = targetCompatibility = compileJava.sourceCompatibility = compileJava.targetCompatibility = '1.8'
+
+sourceSets {
+    api
+}
+
+sourceSets.main.compileClasspath += sourceSets.api.output
+sourceSets.main.runtimeClasspath += sourceSets.api.output
+
+minecraft {
+    mappings channel: 'snapshot', version: '20171003-1.12'
+    
+    accessTransformer = file('src/main/resources/META-INF/accesstransformer.cfg')
+
+    runs {
+        client {
+            workingDirectory project.file('run')
+            property 'forge.logging.markers', 'SCAN,REGISTRIES,REGISTRYDUMP'
+            property 'forge.logging.console.level', 'debug'
+        }
+
+        server {
+            property 'forge.logging.markers', 'SCAN,REGISTRIES,REGISTRYDUMP'
+            property 'forge.logging.console.level', 'debug'
+        }
+    }
+}
+
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+}
+
+processResources {
+    from(sourceSets.main.resources.srcDirs) {
+        include 'mcmod.info'
+        expand 'version': project.version, 'mcversion': '1.12.2'
+    }
+    from(sourceSets.main.resources.srcDirs) {
+        exclude 'mcmod.info'
+    }
+}
+
+dependencies {
+    minecraft 'net.minecraftforge:forge:1.12.2-14.23.5.2859'
+    
+    implementation fg.deobf("curse.maven:botania-225643:3330934")
+    implementation fg.deobf("curse.maven:ae2-extended-life-570458:5411078")
+    implementation fg.deobf("curse.maven:ae2-fluid-crafting-rework-623955:5751930")
+    implementation fg.deobf("curse.maven:mekanism-energistics-1027681:5775101")
+    
+    implementation files('libs/terminal_interaction_integration-1.0.jar')
+    
+    annotationProcessor 'org.ow2.asm:asm-debug-all:5.2'
+    annotationProcessor 'com.google.guava:guava:21.0'
+    annotationProcessor 'com.google.code.gson:gson:2.8.9'
+    implementation ('zone.rong:mixinbooter:10.7') { transitive = false }
+}
+
+jar {
+    manifest {
+        attributes([
+            "Specification-Title": "botania_applie",
+            "Specification-Vendor": "nyonio",
+            "Specification-Version": "1",
+            "Implementation-Title": project.name,
+            "Implementation-Version": "${version}",
+            "Implementation-Vendor" :"nyonio",
+            "Implementation-Timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ssZ"),
+            "FMLAT": "accesstransformer.cfg"
+        ])
+    }
+}
+
+jar.finalizedBy('reobfJar') 
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            artifact jar
+        }
+    }
+    repositories {
+        maven {
+            url "file:///${project.projectDir}/mcmodsrepo"
+        }
+    }
+}

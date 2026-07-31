@@ -1,0 +1,17 @@
+{
+    "type": "minecraft:crafting_shaped",
+    "pattern": [
+        "ada",
+        "efe",
+        "aea"
+    ],
+    "key": {
+        "a": { "item": "botania:manaresource", "data": 23 },
+        "d": { "item": "appliedenergistics2:material", "data": 23 },
+        "e": { "item": "botania_applie:mana_storage_component_64m" },
+        "f": { "item": "appliedenergistics2:quartz_glass" }
+    },
+    "result": {
+        "item": "botania_applie:mana_storage_component_256m"
+    }
+}

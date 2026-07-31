@@ -1,0 +1,10 @@
+{
+    "type": "minecraft:crafting_shapeless",
+    "ingredients": [
+        { "item": "botania:auraringgreater" },
+        { "item": "appliedenergistics2:material", "data": 28 }
+    ],
+    "result": {
+        "item": "botania_applie:mana_card_advanced"
+    }
+}

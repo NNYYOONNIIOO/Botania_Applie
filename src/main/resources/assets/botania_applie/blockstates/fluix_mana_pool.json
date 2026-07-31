@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "variant=default": { "model": "botania_applie:fluix_mana_pool" },
+    "variant=creative": { "model": "botania_applie:fluix_mana_pool" },
+    "variant=diluted": { "model": "botania_applie:fluix_mana_pool" },
+    "variant=fabulous": { "model": "botania_applie:fluix_mana_pool" }
+  }
+}
