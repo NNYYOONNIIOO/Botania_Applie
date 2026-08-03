@@ -47,7 +47,7 @@ public class BotaniaApplie implements ILateMixinLoader
 {
     public static final String MODID = "botania_applie";
     public static final String NAME = "Botania Applie";
-    public static final String VERSION = "1.0.0";
+    public static final String VERSION = "1.2.2";
 
     @SidedProxy(clientSide = "nyonio.ClientProxy", serverSide = "nyonio.CommonProxy")
     public static CommonProxy proxy;
