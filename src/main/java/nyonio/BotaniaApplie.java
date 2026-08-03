@@ -26,6 +26,7 @@ import nyonio.block.BlockFluixManaPool;
 import nyonio.handler.ManaCardTickHandler;
 import nyonio.handler.ObedienceStickHandler;
 import nyonio.integration.wireless.WirelessManaItemsHandler;
+import nyonio.integration.top.TopIntegration;
 import nyonio.item.ItemManaCard;
 import nyonio.item.ItemManaPacket;
 import nyonio.item.ItemManaStorageCell;
@@ -155,6 +156,8 @@ public class BotaniaApplie implements ILateMixinLoader
     public void init(FMLInitializationEvent event)
     {
         proxy.init(event);
+
+        TopIntegration.register();
 
         AEApi.instance().registries().cell().addCellHandler(ManaCellHandler.INSTANCE);
 

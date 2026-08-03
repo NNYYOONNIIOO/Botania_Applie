@@ -70,7 +70,7 @@ import java.util.List;
 public class TileFluixManaPool extends TileMod implements IManaPool, IManaCollector, IKeyLocked, ISparkAttachable, IThrottledPacket, net.minecraft.util.ITickable, IGridProxyable, IActionHost {
     public static final int MAX_MANA_FLUIX = Integer.MAX_VALUE;
     public static final Color PARTICLE_COLOR = new Color(0x00C6FF);
-    
+
     private static final String TAG_MANA = "mana";
     private static final String TAG_KNOWN_MANA = "knownMana";
     private static final String TAG_OUTPUTTING = "outputting";
@@ -79,9 +79,11 @@ public class TileFluixManaPool extends TileMod implements IManaPool, IManaCollec
     private static final String TAG_INPUT_KEY = "inputKey";
     private static final String TAG_OUTPUT_KEY = "outputKey";
     private static final String TAG_NETWORK_CONNECTED = "networkConnected";
+    private static final String TAG_DISPLAY_MANA = "displayMana";
+    private static final String TAG_DISPLAY_MANA_CAP = "displayManaCap";
     private static final int CRAFT_EFFECT_EVENT = 0;
     private static final int CHARGE_EFFECT_EVENT = 1;
-    
+
     private boolean outputting = false;
     public EnumDyeColor color = EnumDyeColor.WHITE;
     public int mana;
@@ -100,10 +102,14 @@ public class TileFluixManaPool extends TileMod implements IManaPool, IManaCollec
     private boolean isNetworkConnected = false;
     private int lastNetworkCheckTick = 0;
     private MachineSource actionSource;
+
+    private int displayMana = 0;
+    private int displayManaCap = MAX_MANA_FLUIX;
     
     // 网络缓存：避免每次getter都查询网络，同时正确处理容量同步
     private long cachedNetworkMana = 0;
     private long cachedNetworkAvailable = 0;
+    private long cachedNetworkCapacity = 0;
     private boolean cachedNetworkFull = false;
     private boolean cacheValid = false;
 
@@ -161,10 +167,10 @@ public class TileFluixManaPool extends TileMod implements IManaPool, IManaCollec
             
             if(connectionChanged) {
                 if(isNetworkConnected && mana > 0) {
-                    transferLocalManaToNetwork(mana);
+                    refreshNetworkCache();
+                    flushLocalManaToNetwork();
                     // 不设 mana = 0，让下面的缓存刷新块来更新 mana
                 } else if(!isNetworkConnected) {
-                    mana = 0;
                     manaCap = MAX_MANA_FLUIX;
                     cacheValid = false;
                 }
@@ -175,15 +181,17 @@ public class TileFluixManaPool extends TileMod implements IManaPool, IManaCollec
             
             if(isNetworkConnected) {
                 refreshNetworkCache();
-                int newMana = calculateDisplayMana();
-                int newCap = getMaxMana();
+                updateDisplayValues();
                 // 连接状态变化时强制发包，确保客户端收到正确的 mana 和 manaCap
-                if(mana != newMana || manaCap != newCap || connectionChanged) {
-                    mana = newMana;
-                    manaCap = newCap;
-                    VanillaPacketDispatcher.dispatchTEToNearbyPlayers(this);
-                }
+                markDispatchable();
             }
+        }
+
+        if(!world.isRemote) {
+            if(isNetworkConnected && mana > 0) {
+                flushLocalManaToNetwork();
+            }
+            updateDisplayValues();
         }
         
         if(!ManaNetworkHandler.instance.isPoolIn(this) && !isInvalid()) {
@@ -209,17 +217,6 @@ public class TileFluixManaPool extends TileMod implements IManaPool, IManaCollec
         }
         
         if(sendPacket && ticks % 10 == 0) {
-            if(isNetworkConnected && !world.isRemote) {
-                if(!cacheValid) refreshNetworkCache();
-                if(cacheValid) {
-                    int newMana = calculateDisplayMana();
-                    int newCap = getMaxMana();
-                    if(mana != newMana || manaCap != newCap) {
-                        mana = newMana;
-                        manaCap = newCap;
-                    }
-                }
-            }
             VanillaPacketDispatcher.dispatchTEToNearbyPlayers(this);
             sendPacket = false;
         }
@@ -240,20 +237,24 @@ public class TileFluixManaPool extends TileMod implements IManaPool, IManaCollec
                     
                     if(outputting) {
                         // 网络模式下使用缓存判断是否有魔力可用（溢出时 getCurrentMana() 返回 0）
-                        boolean hasMana = isNetworkConnected ? (cacheValid && cachedNetworkMana > 0) : (getCurrentMana() > 0);
-                        int availableMana = isNetworkConnected ? (int) Math.min(cachedNetworkMana, Integer.MAX_VALUE) : getCurrentMana();
-                        if(hasMana && manaItem.getMana(stack) < manaItem.getMaxMana(stack)) {
-                            didSomething = true;
-                            int manaVal = Math.min(transfRate, Math.min(availableMana, manaItem.getMaxMana(stack) - manaItem.getMana(stack)));
-                            manaItem.addMana(stack, manaVal);
-                            recieveMana(-manaVal);
+                        long availableMana = getTotalMana();
+                        if(availableMana > 0 && manaItem.getMana(stack) < manaItem.getMaxMana(stack)) {
+                            int manaVal = (int) Math.min((long) transfRate,
+                                    Math.min(availableMana, manaItem.getMaxMana(stack) - manaItem.getMana(stack)));
+                            int moved = (int) Math.min((long) manaVal, extractMana(manaVal));
+                            if(moved > 0) {
+                                manaItem.addMana(stack, moved);
+                                didSomething = true;
+                            }
                         }
                     } else {
                         if(manaItem.getMana(stack) > 0 && !isFull()) {
-                            didSomething = true;
                             int manaVal = Math.min(transfRate, Math.min(getAvailableSpaceForMana(), manaItem.getMana(stack)));
-                            manaItem.addMana(stack, -manaVal);
-                            recieveMana(manaVal);
+                            int moved = (int) Math.min((long) manaVal, insertMana(manaVal));
+                            if(moved > 0) {
+                                manaItem.addMana(stack, -moved);
+                                didSomething = true;
+                            }
                         }
                     }
                     
@@ -349,12 +350,14 @@ public class TileFluixManaPool extends TileMod implements IManaPool, IManaCollec
             if(isNetworkConnected && !world.isRemote) {
                 // 网络模式下直接查询缓存，不依赖 getCurrentMana()（溢出时 getCurrentMana() 返回 0）
                 if(!cacheValid) refreshNetworkCache();
-                canCraft = cacheValid && cachedNetworkMana >= mana;
+                canCraft = getTotalMana() >= mana;
             } else {
                 canCraft = getCurrentMana() >= mana;
             }
             if(canCraft) {
-                recieveMana(-mana);
+                if(extractMana(mana) < mana) {
+                    return false;
+                }
 
                 stack.shrink(1);
 
@@ -380,8 +383,7 @@ public class TileFluixManaPool extends TileMod implements IManaPool, IManaCollec
         world.addBlockEvent(getPos(), getBlockType(), CRAFT_EFFECT_EVENT, 0);
     }
     
-    @Override
-    public int getCurrentMana() {
+    private int getLegacyCurrentMana() {
         if(isNetworkConnected && !world.isRemote) {
             if(!cacheValid) refreshNetworkCache();
             if(!cacheValid) return mana;
@@ -400,22 +402,38 @@ public class TileFluixManaPool extends TileMod implements IManaPool, IManaCollec
         }
         return mana;
     }
-    
+
     @Override
-    public boolean isFull() {
+    public int getCurrentMana() {
+        if(world != null && world.isRemote) {
+            return displayMana;
+        }
+        return clampToInt(getTotalMana());
+    }
+
+    private boolean getLegacyIsFull() {
         if(isNetworkConnected && !world.isRemote) {
             if(!cacheValid) refreshNetworkCache();
             if(cacheValid) return cachedNetworkFull;
             // 缓存无效时使用本地缓存值判断，避免阻止产能花传输
             return getCurrentMana() >= getMaxMana();
         }
-        
+
         Block blockBelow = world.getBlockState(pos.down()).getBlock();
         return blockBelow != ModBlocks.manaVoid && getCurrentMana() >= manaCap;
     }
-    
+
     @Override
-    public void recieveMana(int mana) {
+    public boolean isFull() {
+        if(isNetworkConnected && world != null && !world.isRemote) {
+            return getTotalMana() >= getTotalCapacity();
+        }
+
+        Block blockBelow = world.getBlockState(pos.down()).getBlock();
+        return blockBelow != ModBlocks.manaVoid && mana >= manaCap;
+    }
+
+    private void getLegacyRecieveMana(int mana) {
         if(isNetworkConnected && !world.isRemote) {
             if(!cacheValid) refreshNetworkCache();
             if(mana >= 0) {
@@ -460,6 +478,15 @@ public class TileFluixManaPool extends TileMod implements IManaPool, IManaCollec
             markDispatchable();
         }
     }
+
+    @Override
+    public void recieveMana(int mana) {
+        if(mana > 0) {
+            insertMana(mana);
+        } else if(mana < 0) {
+            extractMana(-(long) mana);
+        }
+    }
     
     @Override
     public void invalidate() {
@@ -482,10 +509,15 @@ public class TileFluixManaPool extends TileMod implements IManaPool, IManaCollec
     }
     
     public static int calculateComparatorLevel(int mana, int max) {
-        int val = (int) ((double) mana / (double) max * 15.0);
-        if(mana > 0)
-            val = Math.max(val, 1);
-        return val;
+        return calculateComparatorLevel((long) mana, (long) max);
+    }
+
+    public static int calculateComparatorLevel(long mana, long max) {
+        if(max <= 0 || mana <= 0) {
+            return 0;
+        }
+        int val = (int) Math.min(15L, Math.round(((double) mana / (double) max) * 15.0D));
+        return Math.max(val, 1);
     }
     
     public void onWanded(EntityPlayer player, ItemStack wand) {
@@ -500,7 +532,7 @@ public class TileFluixManaPool extends TileMod implements IManaPool, IManaCollec
         if(!world.isRemote) {
             NBTTagCompound nbttagcompound = new NBTTagCompound();
             writePacketNBT(nbttagcompound);
-            nbttagcompound.setInteger(TAG_KNOWN_MANA, calculateDisplayMana());
+            nbttagcompound.setInteger(TAG_KNOWN_MANA, getCurrentMana());
             if(player instanceof EntityPlayerMP)
                 ((EntityPlayerMP) player).connection.sendPacket(new SPacketUpdateTileEntity(pos, -999, nbttagcompound));
         }
@@ -561,8 +593,7 @@ public class TileFluixManaPool extends TileMod implements IManaPool, IManaCollec
         return 1.0F;
     }
 
-    @Override
-    public int getMaxMana() {
+    private int getLegacyMaxMana() {
         if(isNetworkConnected && !world.isRemote) {
             if(!cacheValid) refreshNetworkCache();
             if(!cacheValid) return manaCap;
@@ -574,6 +605,14 @@ public class TileFluixManaPool extends TileMod implements IManaPool, IManaCollec
             return (int) Math.min(total, Integer.MAX_VALUE);
         }
         return manaCap;
+    }
+
+    @Override
+    public int getMaxMana() {
+        if(world != null && world.isRemote) {
+            return displayManaCap;
+        }
+        return clampToInt(getTotalCapacity());
     }
     
     @Override
@@ -615,8 +654,7 @@ public class TileFluixManaPool extends TileMod implements IManaPool, IManaCollec
         return false;
     }
     
-    @Override
-    public int getAvailableSpaceForMana() {
+    private int getLegacyAvailableSpaceForMana() {
         if(isNetworkConnected && !world.isRemote) {
             if(!cacheValid) refreshNetworkCache();
             if(cacheValid) {
@@ -631,6 +669,18 @@ public class TileFluixManaPool extends TileMod implements IManaPool, IManaCollec
         else if(world.getBlockState(pos.down()).getBlock() == ModBlocks.manaVoid)
             return manaCap;
         else return 0;
+    }
+
+    @Override
+    public int getAvailableSpaceForMana() {
+        long space = getTotalCapacity() - getTotalMana();
+        if(space > 0) {
+            return clampToInt(space);
+        }
+        if(world != null && !world.isRemote && world.getBlockState(pos.down()).getBlock() == ModBlocks.manaVoid) {
+            return MAX_MANA_FLUIX;
+        }
+        return 0;
     }
     
     @Override
@@ -658,6 +708,8 @@ public class TileFluixManaPool extends TileMod implements IManaPool, IManaCollec
         tag.setString(TAG_INPUT_KEY, inputKey);
         tag.setString(TAG_OUTPUT_KEY, outputKey);
         tag.setBoolean(TAG_NETWORK_CONNECTED, isNetworkConnected);
+        tag.setInteger(TAG_DISPLAY_MANA, displayMana);
+        tag.setInteger(TAG_DISPLAY_MANA_CAP, displayManaCap);
         if (this.gridProxy != null) {
             this.gridProxy.writeToNBT(tag);
         }
@@ -665,13 +717,21 @@ public class TileFluixManaPool extends TileMod implements IManaPool, IManaCollec
     
     @Override
     public void readPacketNBT(NBTTagCompound tag) {
-        mana = tag.getInteger(TAG_MANA);
+        mana = Math.max(0, Math.min(MAX_MANA_FLUIX, tag.getInteger(TAG_MANA)));
         outputting = tag.getBoolean(TAG_OUTPUTTING);
         color = EnumDyeColor.byMetadata(tag.getInteger(TAG_COLOR));
-        manaCap = tag.getInteger(TAG_MANA_CAP);
-        if(manaCap <= 0) {
-            manaCap = MAX_MANA_FLUIX;
+        manaCap = MAX_MANA_FLUIX;
+        if(tag.hasKey(TAG_DISPLAY_MANA)) {
+            displayMana = Math.max(0, tag.getInteger(TAG_DISPLAY_MANA));
+        } else {
+            displayMana = Math.min(mana, MAX_MANA_FLUIX);
         }
+        if(tag.hasKey(TAG_DISPLAY_MANA_CAP)) {
+            displayManaCap = Math.max(1, tag.getInteger(TAG_DISPLAY_MANA_CAP));
+        } else {
+            displayManaCap = MAX_MANA_FLUIX;
+        }
+        cacheValid = false;
         if(tag.hasKey(TAG_INPUT_KEY))
             inputKey = tag.getString(TAG_INPUT_KEY);
         if(tag.hasKey(TAG_OUTPUT_KEY))
@@ -729,18 +789,27 @@ public class TileFluixManaPool extends TileMod implements IManaPool, IManaCollec
             
             IGrid grid = node.getGrid();
             IStorageGrid storage = grid.getCache(IStorageGrid.class);
-            IMEInventory<nyonio.ae2.ManaStack> inventory = storage.getInventory(nyonio.ae2.ManaStorageChannel.INSTANCE);
+            IMEInventory<nyonio.ae2.ManaStack> inventory = storage == null ? null : storage.getInventory(nyonio.ae2.ManaStorageChannel.INSTANCE);
+            if(inventory == null) {
+                cachedNetworkMana = 0;
+                cachedNetworkAvailable = 0;
+                cachedNetworkCapacity = 0;
+                cachedNetworkFull = true;
+                cacheValid = true;
+                return;
+            }
             
             // 查询当前魔力（extractItems SIMULATE，受Integer.MAX_VALUE上限）
-            nyonio.ae2.ManaStack request = new nyonio.ae2.ManaStack(Integer.MAX_VALUE);
+            nyonio.ae2.ManaStack request = new nyonio.ae2.ManaStack(Long.MAX_VALUE);
             nyonio.ae2.ManaStack extracted = inventory.extractItems(request, appeng.api.config.Actionable.SIMULATE, actionSource);
             cachedNetworkMana = extracted != null ? extracted.getStackSize() : 0;
             
             // 查询可用空间（injectItems SIMULATE）
-            nyonio.ae2.ManaStack toInsert = new nyonio.ae2.ManaStack(Integer.MAX_VALUE);
+            nyonio.ae2.ManaStack toInsert = new nyonio.ae2.ManaStack(Long.MAX_VALUE);
             nyonio.ae2.ManaStack remaining = inventory.injectItems(toInsert, appeng.api.config.Actionable.SIMULATE, actionSource);
             long rejected = remaining != null ? remaining.getStackSize() : 0;
-            cachedNetworkAvailable = Math.max(0, (long) Integer.MAX_VALUE - rejected);
+            cachedNetworkAvailable = Math.max(0, Long.MAX_VALUE - rejected);
+            cachedNetworkCapacity = saturatedAdd(cachedNetworkMana, cachedNetworkAvailable);
 
             cachedNetworkFull = (cachedNetworkAvailable == 0);
             cacheValid = true;
@@ -749,6 +818,194 @@ public class TileFluixManaPool extends TileMod implements IManaPool, IManaCollec
         }
     }
     
+    private long getNetworkMana() {
+        if(!isNetworkConnected || world == null || world.isRemote) {
+            return 0;
+        }
+        if(!cacheValid) {
+            refreshNetworkCache();
+        }
+        return cacheValid ? cachedNetworkMana : 0;
+    }
+
+    private long getNetworkCapacity() {
+        if(!isNetworkConnected || world == null || world.isRemote) {
+            return 0;
+        }
+        if(!cacheValid) {
+            refreshNetworkCache();
+        }
+        return cacheValid ? cachedNetworkCapacity : 0;
+    }
+
+    private long getTotalMana() {
+        return saturatedAdd(Math.max(0, mana), getNetworkMana());
+    }
+
+    private long getTotalCapacity() {
+        if(isNetworkConnected && world != null && !world.isRemote) {
+            return saturatedAdd(MAX_MANA_FLUIX, getNetworkCapacity());
+        }
+        return MAX_MANA_FLUIX;
+    }
+
+    private void updateDisplayValues() {
+        if(world == null || world.isRemote) {
+            return;
+        }
+        displayManaCap = MAX_MANA_FLUIX;
+        displayMana = scaleToInt(getTotalMana(), getTotalCapacity());
+    }
+
+    private long insertMana(long amount) {
+        if(amount <= 0) {
+            return 0;
+        }
+
+        long remaining = amount;
+        long inserted = 0;
+        if(isNetworkConnected && world != null && !world.isRemote) {
+            long networkInserted = transferManaToNetwork(remaining);
+            if(networkInserted > 0) {
+                inserted += networkInserted;
+                remaining -= networkInserted;
+                recordNetworkInsert(networkInserted);
+            }
+        }
+
+        long localSpace = Math.max(0L, (long) manaCap - mana);
+        long localInserted = Math.min(remaining, localSpace);
+        if(localInserted > 0) {
+            mana += (int) localInserted;
+            inserted += localInserted;
+        }
+
+        if(inserted > 0) {
+            notifyManaChanged();
+        }
+        return inserted;
+    }
+
+    private long extractMana(long amount) {
+        if(amount <= 0) {
+            return 0;
+        }
+
+        long remaining = amount;
+        long extracted = 0;
+        long localExtracted = Math.min(remaining, Math.max(0L, mana));
+        if(localExtracted > 0) {
+            mana -= (int) localExtracted;
+            extracted += localExtracted;
+            remaining -= localExtracted;
+        }
+
+        if(remaining > 0 && isNetworkConnected && world != null && !world.isRemote) {
+            long networkExtracted = extractManaFromNetwork(remaining);
+            if(networkExtracted > 0) {
+                extracted += networkExtracted;
+                recordNetworkExtract(networkExtracted);
+            }
+        }
+
+        if(extracted > 0) {
+            notifyManaChanged();
+        }
+        return extracted;
+    }
+
+    private long flushLocalManaToNetwork() {
+        if(mana <= 0 || !isNetworkConnected || world == null || world.isRemote) {
+            return 0;
+        }
+
+        long transferred = transferManaToNetwork(mana);
+        if(transferred > 0) {
+            mana -= (int) Math.min((long) mana, transferred);
+            recordNetworkInsert(transferred);
+            notifyManaChanged();
+        }
+        return transferred;
+    }
+
+    private void recordNetworkInsert(long amount) {
+        if(!cacheValid) {
+            refreshNetworkCache();
+            return;
+        }
+        cachedNetworkMana = saturatedAdd(cachedNetworkMana, amount);
+        cachedNetworkAvailable = Math.max(0, cachedNetworkAvailable - amount);
+        cachedNetworkCapacity = saturatedAdd(cachedNetworkMana, cachedNetworkAvailable);
+        cachedNetworkFull = cachedNetworkAvailable == 0;
+    }
+
+    private void recordNetworkExtract(long amount) {
+        if(!cacheValid) {
+            refreshNetworkCache();
+            return;
+        }
+        cachedNetworkMana = Math.max(0, cachedNetworkMana - amount);
+        cachedNetworkAvailable = saturatedAdd(cachedNetworkAvailable, amount);
+        cachedNetworkCapacity = saturatedAdd(cachedNetworkMana, cachedNetworkAvailable);
+        cachedNetworkFull = cachedNetworkAvailable == 0;
+    }
+
+    private void notifyManaChanged() {
+        markDirty();
+        if(world != null && !world.isRemote) {
+            world.updateComparatorOutputLevel(pos, world.getBlockState(pos).getBlock());
+            updateDisplayValues();
+        }
+        markDispatchable();
+    }
+
+    public long getProbeCurrentMana() {
+        return world != null && world.isRemote ? displayMana : getTotalMana();
+    }
+
+    public long getProbeMaxMana() {
+        return world != null && world.isRemote ? displayManaCap : getTotalCapacity();
+    }
+
+    public int getRenderMana() {
+        return displayMana;
+    }
+
+    public int getRenderManaCap() {
+        return displayManaCap;
+    }
+
+    public int getComparatorLevel() {
+        return calculateComparatorLevel(getTotalMana(), getTotalCapacity());
+    }
+
+    private static long saturatedAdd(long first, long second) {
+        if(first <= 0) {
+            return Math.max(0, second);
+        }
+        if(second <= 0) {
+            return first;
+        }
+        if(Long.MAX_VALUE - first < second) {
+            return Long.MAX_VALUE;
+        }
+        return first + second;
+    }
+
+    private static int clampToInt(long value) {
+        return (int) Math.min((long) Integer.MAX_VALUE, Math.max(0L, value));
+    }
+
+    private static int scaleToInt(long current, long capacity) {
+        if(current <= 0 || capacity <= 0) {
+            return 0;
+        }
+        if(current >= capacity) {
+            return Integer.MAX_VALUE;
+        }
+        return clampToInt(Math.round(((double) current / (double) capacity) * Integer.MAX_VALUE));
+    }
+
     private boolean checkNetworkConnection() {
         if(gridProxy == null || gridProxy.getNode() == null) {
             return false;
@@ -780,6 +1037,34 @@ public class TileFluixManaPool extends TileMod implements IManaPool, IManaCollec
         }
     }
     
+    private long transferManaToNetwork(long amount) {
+        if(amount <= 0) {
+            return 0;
+        }
+        try {
+            if(gridProxy == null || gridProxy.getNode() == null) {
+                return 0;
+            }
+            IGridNode node = gridProxy.getNode();
+            if(!node.isActive() || node.getGrid() == null) {
+                return 0;
+            }
+
+            IStorageGrid storage = node.getGrid().getCache(IStorageGrid.class);
+            IMEInventory<nyonio.ae2.ManaStack> inventory = storage == null ? null : storage.getInventory(nyonio.ae2.ManaStorageChannel.INSTANCE);
+            if(inventory == null) {
+                return 0;
+            }
+
+            nyonio.ae2.ManaStack remaining = inventory.injectItems(
+                    new nyonio.ae2.ManaStack(amount), appeng.api.config.Actionable.MODULATE, actionSource);
+            long rejected = remaining == null ? 0 : Math.max(0, remaining.getStackSize());
+            return Math.max(0, amount - Math.min(amount, rejected));
+        } catch(Exception e) {
+            return 0;
+        }
+    }
+
     private int transferManaToNetwork(int amount) {
         try {
             if(gridProxy == null || gridProxy.getNode() == null) {
@@ -804,6 +1089,33 @@ public class TileFluixManaPool extends TileMod implements IManaPool, IManaCollec
         }
     }
     
+    private long extractManaFromNetwork(long amount) {
+        if(amount <= 0) {
+            return 0;
+        }
+        try {
+            if(gridProxy == null || gridProxy.getNode() == null) {
+                return 0;
+            }
+            IGridNode node = gridProxy.getNode();
+            if(!node.isActive() || node.getGrid() == null) {
+                return 0;
+            }
+
+            IStorageGrid storage = node.getGrid().getCache(IStorageGrid.class);
+            IMEInventory<nyonio.ae2.ManaStack> inventory = storage == null ? null : storage.getInventory(nyonio.ae2.ManaStorageChannel.INSTANCE);
+            if(inventory == null) {
+                return 0;
+            }
+
+            nyonio.ae2.ManaStack extracted = inventory.extractItems(
+                    new nyonio.ae2.ManaStack(amount), appeng.api.config.Actionable.MODULATE, actionSource);
+            return extracted == null ? 0 : Math.max(0, Math.min(amount, extracted.getStackSize()));
+        } catch(Exception e) {
+            return 0;
+        }
+    }
+
     private int extractManaFromNetwork(int amount) {
         try {
             if(gridProxy == null || gridProxy.getNode() == null) {

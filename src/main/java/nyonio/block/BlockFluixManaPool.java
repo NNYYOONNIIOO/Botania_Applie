@@ -127,7 +127,7 @@ public class BlockFluixManaPool extends net.minecraft.block.Block implements IMo
     @Override
     public int getComparatorInputOverride(IBlockState state, World world, BlockPos pos) {
         TileFluixManaPool pool = (TileFluixManaPool) world.getTileEntity(pos);
-        return TileFluixManaPool.calculateComparatorLevel(pool.getCurrentMana(), pool.manaCap);
+        return pool.getComparatorLevel();
     }
 
     @Override

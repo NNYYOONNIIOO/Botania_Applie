@@ -65,8 +65,8 @@ public class RenderTileFluixManaPool extends TileEntitySpecialRenderer<TileFluix
         GlStateManager.color(1, 1, 1, a);
         GlStateManager.enableRescaleNormal();
 
-        int mana = pool.getCurrentMana();
-        int cap = pool.manaCap;
+        int mana = pool.getRenderMana();
+        int cap = pool.getRenderManaCap();
 
         float waterLevel = (float) mana / (float) cap * 0.4F;
 

@@ -73,6 +73,7 @@ dependencies {
     implementation fg.deobf("curse.maven:ae2-extended-life-570458:5411078")
     implementation fg.deobf("curse.maven:ae2-fluid-crafting-rework-623955:5751930")
     implementation fg.deobf("curse.maven:mekanism-energistics-1027681:5775101")
+    implementation fg.deobf("curse.maven:the-one-probe-community-edition-885670:8547575")
     
     implementation files('libs/terminal_interaction_integration-1.0.jar')
     
