@@ -3,7 +3,7 @@
   "modid": "botania_applie",
   "name": "Botania Applie",
   "description": "Allows storing Botania mana in AE2 storage cells",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "mcversion": "${mcversion}",
   "url": "",
   "updateUrl": "",
