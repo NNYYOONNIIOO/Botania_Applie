@@ -18,12 +18,15 @@ public interface IFluixManaReceiver extends IManaPool, IManaCollector, ISparkAtt
 
     @Override
     default int getCurrentMana() {
+        if (!hasFluixPoolCard()) {
+            return 0;
+        }
         return (int) Math.min(Integer.MAX_VALUE, FluixPoolManaHelper.getMana(getFluixManaTarget()));
     }
 
     @Override
     default int getMaxMana() {
-        return Integer.MAX_VALUE;
+        return hasFluixPoolCard() ? Integer.MAX_VALUE : 0;
     }
 
     @Override
@@ -54,7 +57,7 @@ public interface IFluixManaReceiver extends IManaPool, IManaCollector, ISparkAtt
 
     @Override
     default boolean isOutputtingPower() {
-        return true;
+        return hasFluixPoolCard();
     }
 
     @Override
@@ -77,6 +80,7 @@ public interface IFluixManaReceiver extends IManaPool, IManaCollector, ISparkAtt
 
     @Override
     default ISparkEntity getAttachedSpark() {
+        if (!hasFluixPoolCard()) return null;
         Object target = getFluixManaTarget();
         if (!(target instanceof TileEntity)) return null;
         TileEntity tile = (TileEntity) target;
@@ -90,6 +94,9 @@ public interface IFluixManaReceiver extends IManaPool, IManaCollector, ISparkAtt
 
     @Override
     default int getAvailableSpaceForMana() {
+        if (!hasFluixPoolCard()) {
+            return 0;
+        }
         return (int) Math.min(Integer.MAX_VALUE, FluixPoolManaHelper.getSpace(getFluixManaTarget()));
     }
 
