@@ -36,8 +36,13 @@ public interface IFluixManaReceiver extends IManaPool, IManaCollector, ISparkAtt
 
     @Override
     default void recieveMana(int amount) {
-        if (hasFluixPoolCard()) {
+        if (!hasFluixPoolCard()) {
+            return;
+        }
+        if (amount > 0) {
             FluixPoolManaHelper.insert(getFluixManaTarget(), amount);
+        } else if (amount < 0) {
+            FluixPoolManaHelper.extract(getFluixManaTarget(), (int) Math.min(Integer.MAX_VALUE, -(long) amount));
         }
     }
 
