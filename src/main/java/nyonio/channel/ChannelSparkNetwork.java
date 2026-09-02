@@ -1,6 +1,8 @@
 package nyonio.channel;
 
 import appeng.api.networking.IGridNode;
+import appeng.api.networking.IGridConnection;
+import appeng.api.util.AEPartLocation;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.AxisAlignedBB;
@@ -20,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.WeakHashMap;
 
 /**
  * Maintains the wireless AE2 links represented by channel sparks.
@@ -31,8 +34,20 @@ import java.util.UUID;
  */
 public final class ChannelSparkNetwork {
     private static final String GRID_CONNECTION_CLASS = "appeng.me.GridConnection";
+    private static final Map<IGridConnection, Integer> CHANNEL_CAPACITIES =
+            Collections.synchronizedMap(new WeakHashMap<IGridConnection, Integer>());
 
     private ChannelSparkNetwork() {
+    }
+
+    public static Integer getCapacity(IGridConnection connection) {
+        return connection == null ? null : CHANNEL_CAPACITIES.get(connection);
+    }
+
+    private static void registerConnection(Object connection) {
+        if (connection instanceof IGridConnection) {
+            CHANNEL_CAPACITIES.put((IGridConnection) connection, ChannelSparkConfig.getChannelCapacity());
+        }
     }
 
     public static final class Link {
@@ -226,37 +241,13 @@ public final class ChannelSparkNetwork {
     private static Object createGridConnection(IGridNode first, IGridNode second) {
         try {
             Class<?> connectionClass = Class.forName(GRID_CONNECTION_CLASS);
-            Constructor<?>[] constructors = connectionClass.getDeclaredConstructors();
-            for (boolean dense : new boolean[]{true, false}) {
-                for (Constructor<?> constructor : constructors) {
-                    Object[] arguments = buildArguments(constructor.getParameterTypes(), first, second, dense);
-                    if (arguments == null) {
-                        continue;
-                    }
-                    try {
-                        if (!constructor.isAccessible()) {
-                            constructor.setAccessible(true);
-                        }
-                        return constructor.newInstance(arguments);
-                    } catch (Throwable ignored) {
-                    }
-                }
+            Method factory = connectionClass.getDeclaredMethod("create", IGridNode.class, IGridNode.class, AEPartLocation.class);
+            if (!factory.isAccessible()) {
+                factory.setAccessible(true);
             }
-
-            for (Method method : first.getClass().getMethods()) {
-                if (!("connect".equals(method.getName()) || "connectTo".equals(method.getName()))
-                        || method.getParameterTypes().length != 1
-                        || !method.getParameterTypes()[0].isInstance(second)) {
-                    continue;
-                }
-                try {
-                    Object result = method.invoke(first, second);
-                    if (result != null) {
-                        return result;
-                    }
-                } catch (Throwable ignored) {
-                }
-            }
+            Object connection = factory.invoke(null, first, second, AEPartLocation.INTERNAL);
+            registerConnection(connection);
+            return connection;
         } catch (Throwable ignored) {
         }
         return null;
