@@ -105,6 +105,11 @@ public final class ChannelSparkNetwork {
         return first.getEntityId() < second.getEntityId();
     }
 
+    private static boolean hasUsableEndpoint(EntityChannelSpark spark) {
+        return spark != null && spark.hasTarget()
+                && isUsable(findGridNode(spark.world, spark.getTargetPos()));
+    }
+
     public static void showNetwork(EntityPlayer player, EntityChannelSpark source) {
         if (player == null || source == null || source.world == null || source.world.isRemote) {
             return;
@@ -135,18 +140,6 @@ public final class ChannelSparkNetwork {
 
         if (!isPrimaryInBlock(spark)) {
             clear(spark);
-            return;
-        }
-
-        if (!spark.hasTarget()) {
-            // A spark placed in the air has no AE endpoint, but it is still a
-            // valid floating spark and must remain in the world.
-            return;
-        }
-
-        IGridNode targetNode = findGridNode(spark.world, spark.getTargetPos());
-        if (!isUsable(targetNode)) {
-            removeInvalidLinks(spark);
             return;
         }
 
@@ -187,40 +180,66 @@ public final class ChannelSparkNetwork {
             EntityChannelSpark other = link.other;
             if (other == null || other.isDead || other.world != spark.world
                     || !other.hasTarget() || spark.getDistanceSq(other) > maxDistance
-                    || !isPrimaryInBlock(other)
-                    || findGridNode(spark.world, spark.getTargetPos()) == null
-                    || findGridNode(other.world, other.getTargetPos()) == null) {
+                    || !isPrimaryInBlock(other)) {
                 unlink(spark, other, link.connection);
+            } else if (link.connection != null
+                    && (!hasUsableEndpoint(spark) || !hasUsableEndpoint(other))) {
+                downgradeConnection(spark, other, link.connection);
             }
         }
     }
 
     private static void connect(EntityChannelSpark first, EntityChannelSpark second) {
-        if (first.getLinks().containsKey(second.getUniqueID())) {
+        Link existing = first.getLinks().get(second.getUniqueID());
+        if (existing != null) {
+            if (existing.connection == null) {
+                Object connection = createGridConnectionIfPossible(first, second);
+                if (connection != null) {
+                    first.getLinks().put(second.getUniqueID(), new Link(second, connection));
+                    second.getLinks().put(first.getUniqueID(), new Link(first, connection));
+                }
+            }
             return;
+        }
+
+        // The logical spark link is created even when one or both sparks are
+        // floating. It is upgraded to an AE connection as soon as both ends
+        // expose usable grid nodes.
+        Object connection = createGridConnectionIfPossible(first, second);
+        first.getLinks().put(second.getUniqueID(), new Link(second, connection));
+        second.getLinks().put(first.getUniqueID(), new Link(first, connection));
+    }
+
+    private static Object createGridConnectionIfPossible(EntityChannelSpark first, EntityChannelSpark second) {
+        if (!hasUsableEndpoint(first) || !hasUsableEndpoint(second)) {
+            return null;
         }
 
         IGridNode firstNode = findGridNode(first.world, first.getTargetPos());
         IGridNode secondNode = findGridNode(second.world, second.getTargetPos());
-        if (firstNode == null || secondNode == null || firstNode == secondNode
-                || !isUsable(firstNode) || !isUsable(secondNode)) {
-            return;
+        if (firstNode == null || secondNode == null || firstNode == secondNode) {
+            return null;
         }
 
         try {
             if (firstNode.getGrid() != null && firstNode.getGrid() == secondNode.getGrid()) {
-                return;
+                return null;
             }
         } catch (Throwable ignored) {
         }
 
-        Object connection = createGridConnection(firstNode, secondNode);
-        if (connection == null) {
+        return createGridConnection(firstNode, secondNode);
+    }
+
+    private static void downgradeConnection(EntityChannelSpark first, EntityChannelSpark second,
+                                             Object connection) {
+        Link firstLink = first.getLinks().get(second.getUniqueID());
+        if (firstLink == null || firstLink.connection != connection) {
             return;
         }
-
-        first.getLinks().put(second.getUniqueID(), new Link(second, connection));
-        second.getLinks().put(first.getUniqueID(), new Link(first, connection));
+        destroyConnection(connection);
+        first.getLinks().put(second.getUniqueID(), new Link(second, null));
+        second.getLinks().put(first.getUniqueID(), new Link(first, null));
     }
 
     private static void unlink(EntityChannelSpark first, EntityChannelSpark second, Object connection) {
