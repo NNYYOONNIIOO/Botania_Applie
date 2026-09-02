@@ -18,6 +18,31 @@ import nyonio.entity.EntityChannelSpark;
 public class ItemChannelSpark extends Item {
     public ItemChannelSpark() {
         setMaxStackSize(64);
+        setUnlocalizedName("botania_applie.channel_spark");
+    }
+
+    @Override
+    public String getUnlocalizedName(ItemStack stack) {
+        return "item.botania_applie.channel_spark";
+    }
+
+    @Override
+    public EnumActionResult onItemUseFirst(EntityPlayer player, World world, BlockPos pos, EnumFacing side,
+                                            float hitX, float hitY, float hitZ, EnumHand hand) {
+        if (world.isRemote) {
+            return EnumActionResult.SUCCESS;
+        }
+
+        IGridNode target = ChannelSparkNetwork.findGridNode(world, pos);
+        if (target == null) {
+            return EnumActionResult.PASS;
+        }
+
+        BlockPos spawnPos = pos.offset(side);
+        EntityChannelSpark spark = new EntityChannelSpark(world,
+                spawnPos.getX() + 0.5D, spawnPos.getY() + 0.5D, spawnPos.getZ() + 0.5D);
+        spark.setTarget(pos);
+        return spawn(world, player, hand, spark);
     }
 
     @Override
