@@ -1,5 +1,6 @@
 package nyonio.channel;
 
+import appeng.api.AEApi;
 import appeng.api.networking.IGridNode;
 import appeng.api.networking.IGridConnection;
 import appeng.api.util.AEPartLocation;
@@ -62,8 +63,51 @@ public final class ChannelSparkNetwork {
         }
     }
 
+    public static boolean hasSparkInBlock(World world, BlockPos blockPos) {
+        if (world == null || blockPos == null) {
+            return false;
+        }
+        AxisAlignedBB bounds = new AxisAlignedBB(blockPos, blockPos.add(1, 1, 1));
+        for (EntityChannelSpark spark : world.getEntitiesWithinAABB(EntityChannelSpark.class, bounds)) {
+            if (!spark.isDead && blockPos.equals(spark.getContainingBlock())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static boolean isPrimaryInBlock(EntityChannelSpark spark) {
+        if (spark == null || spark.isDead || spark.world == null) {
+            return false;
+        }
+        BlockPos blockPos = spark.getContainingBlock();
+        AxisAlignedBB bounds = new AxisAlignedBB(blockPos, blockPos.add(1, 1, 1));
+        EntityChannelSpark first = null;
+        for (EntityChannelSpark candidate : spark.world.getEntitiesWithinAABB(EntityChannelSpark.class, bounds)) {
+            if (candidate.isDead || !blockPos.equals(candidate.getContainingBlock())) {
+                continue;
+            }
+            if (first == null || isEarlier(candidate, first)) {
+                first = candidate;
+            }
+        }
+        return first == spark;
+    }
+
+    private static boolean isEarlier(EntityChannelSpark first, EntityChannelSpark second) {
+        if (first.getPlacementOrder() != second.getPlacementOrder()) {
+            return first.getPlacementOrder() < second.getPlacementOrder();
+        }
+        return first.getEntityId() < second.getEntityId();
+    }
+
     public static void tick(EntityChannelSpark spark) {
         if (spark == null || spark.isDead || spark.world == null || spark.world.isRemote) {
+            return;
+        }
+
+        if (!isPrimaryInBlock(spark)) {
+            clear(spark);
             return;
         }
 
@@ -77,7 +121,8 @@ public final class ChannelSparkNetwork {
         AxisAlignedBB search = spark.getEntityBoundingBox().grow(radius);
         List<EntityChannelSpark> nearby = spark.world.getEntitiesWithinAABB(EntityChannelSpark.class, search);
         for (EntityChannelSpark other : nearby) {
-            if (other == spark || other.isDead || !other.hasTarget() || other.world != spark.world) {
+            if (other == spark || other.isDead || !other.hasTarget() || other.world != spark.world
+                    || !isPrimaryInBlock(other)) {
                 continue;
             }
             if (spark.getDistanceSq(other) > (double) radius * (double) radius) {
@@ -108,6 +153,7 @@ public final class ChannelSparkNetwork {
             EntityChannelSpark other = link.other;
             if (other == null || other.isDead || other.world != spark.world
                     || !other.hasTarget() || spark.getDistanceSq(other) > maxDistance
+                    || !isPrimaryInBlock(other)
                     || findGridNode(spark.world, spark.getTargetPos()) == null
                     || findGridNode(other.world, other.getTargetPos()) == null) {
                 unlink(spark, other, link.connection);
@@ -270,6 +316,18 @@ public final class ChannelSparkNetwork {
     }
 
     private static Object createGridConnection(IGridNode first, IGridNode second) {
+        try {
+            PENDING_CHANNEL_CAPACITY.set(ChannelSparkConfig.getChannelCapacity());
+            try {
+                IGridConnection connection = AEApi.instance().grid().createGridConnection(first, second);
+                registerConnection(connection);
+                return connection;
+            } finally {
+                PENDING_CHANNEL_CAPACITY.remove();
+            }
+        } catch (Throwable ignored) {
+        }
+
         try {
             Class<?> connectionClass = Class.forName(GRID_CONNECTION_CLASS);
             Method factory = connectionClass.getDeclaredMethod("create", IGridNode.class, IGridNode.class, AEPartLocation.class);

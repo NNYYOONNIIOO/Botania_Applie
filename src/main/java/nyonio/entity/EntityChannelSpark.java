@@ -6,6 +6,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.EnumHand;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.world.World;
 import nyonio.channel.ChannelSparkNetwork;
 import java.util.HashMap;
@@ -17,8 +18,12 @@ public class EntityChannelSpark extends Entity {
     private static final String TARGET_X = "ChannelSparkTargetX";
     private static final String TARGET_Y = "ChannelSparkTargetY";
     private static final String TARGET_Z = "ChannelSparkTargetZ";
+    private static final String PLACEMENT_ORDER = "ChannelSparkPlacementOrder";
+
+    private static long placementSequence;
 
     private BlockPos targetPos;
+    private long placementOrder;
     private final Map<UUID, ChannelSparkNetwork.Link> links = new HashMap<>();
 
     public EntityChannelSpark(World world) {
@@ -44,6 +49,14 @@ public class EntityChannelSpark extends Entity {
         this.targetPos = targetPos;
     }
 
+    public BlockPos getContainingBlock() {
+        return new BlockPos(MathHelper.floor(posX), MathHelper.floor(posY), MathHelper.floor(posZ));
+    }
+
+    public long getPlacementOrder() {
+        return placementOrder;
+    }
+
     public Map<UUID, ChannelSparkNetwork.Link> getLinks() {
         return links;
     }
@@ -51,10 +64,25 @@ public class EntityChannelSpark extends Entity {
     @Override
     protected void entityInit() {
         setSize(0.1F, 0.5F);
+        placementOrder = nextPlacementOrder();
+    }
+
+    private static synchronized long nextPlacementOrder() {
+        return ++placementSequence;
+    }
+
+    private static synchronized void observePlacementOrder(long order) {
+        if (order > placementSequence) {
+            placementSequence = order;
+        }
     }
 
     @Override
     protected void readEntityFromNBT(NBTTagCompound compound) {
+        if (compound.hasKey(PLACEMENT_ORDER)) {
+            placementOrder = compound.getLong(PLACEMENT_ORDER);
+            observePlacementOrder(placementOrder);
+        }
         if (compound.getBoolean(TARGET_PRESENT)) {
             targetPos = new BlockPos(compound.getInteger(TARGET_X), compound.getInteger(TARGET_Y), compound.getInteger(TARGET_Z));
         } else {
@@ -64,6 +92,7 @@ public class EntityChannelSpark extends Entity {
 
     @Override
     protected void writeEntityToNBT(NBTTagCompound compound) {
+        compound.setLong(PLACEMENT_ORDER, placementOrder);
         compound.setBoolean(TARGET_PRESENT, targetPos != null);
         if (targetPos != null) {
             compound.setInteger(TARGET_X, targetPos.getX());

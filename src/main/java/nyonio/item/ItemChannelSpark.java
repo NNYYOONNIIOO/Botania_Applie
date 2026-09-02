@@ -10,7 +10,6 @@ import net.minecraft.util.EnumFacing;
 import net.minecraft.util.EnumHand;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.RayTraceResult;
-import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 import nyonio.channel.ChannelSparkNetwork;
 import nyonio.entity.EntityChannelSpark;
@@ -37,12 +36,7 @@ public class ItemChannelSpark extends Item {
         if (target == null) {
             return EnumActionResult.PASS;
         }
-
-        BlockPos spawnPos = pos.offset(side);
-        EntityChannelSpark spark = new EntityChannelSpark(world,
-                spawnPos.getX() + 0.5D, spawnPos.getY() + 0.5D, spawnPos.getZ() + 0.5D);
-        spark.setTarget(pos);
-        return spawn(world, player, hand, spark);
+        return placeAt(world, player, hand, pos);
     }
 
     @Override
@@ -53,13 +47,10 @@ public class ItemChannelSpark extends Item {
         }
 
         IGridNode target = ChannelSparkNetwork.findGridNode(world, pos);
-        BlockPos spawnPos = pos.offset(facing);
-        EntityChannelSpark spark = new EntityChannelSpark(world,
-                spawnPos.getX() + 0.5D, spawnPos.getY() + 0.5D, spawnPos.getZ() + 0.5D);
-        if (target != null) {
-            spark.setTarget(pos);
+        if (target == null) {
+            return EnumActionResult.PASS;
         }
-        return spawn(world, player, hand, spark);
+        return placeAt(world, player, hand, pos);
     }
 
     @Override
@@ -70,26 +61,26 @@ public class ItemChannelSpark extends Item {
         }
 
         RayTraceResult hit = player.rayTrace(5.0D, 1.0F);
-        EntityChannelSpark spark;
-        if (hit != null && hit.typeOfHit == RayTraceResult.Type.BLOCK) {
-            IGridNode target = ChannelSparkNetwork.findGridNode(world, hit.getBlockPos());
-            Vec3d location = hit.hitVec == null
-                    ? new Vec3d(hit.getBlockPos()).addVector(0.5D, 0.5D, 0.5D)
-                    : hit.hitVec.addVector(hit.sideHit.getFrontOffsetX() * 0.1D,
-                    hit.sideHit.getFrontOffsetY() * 0.1D, hit.sideHit.getFrontOffsetZ() * 0.1D);
-            spark = new EntityChannelSpark(world, location.x, location.y, location.z);
-            if (target != null) {
-                spark.setTarget(hit.getBlockPos());
-            }
-        } else {
-            Vec3d eyes = player.getPositionEyes(1.0F);
-            Vec3d look = player.getLookVec();
-            Vec3d location = eyes.addVector(look.x * 3.0D, look.y * 3.0D, look.z * 3.0D);
-            spark = new EntityChannelSpark(world, location.x, location.y, location.z);
+        if (hit == null || hit.typeOfHit != RayTraceResult.Type.BLOCK) {
+            return new ActionResult<>(EnumActionResult.PASS, stack);
+        }
+        if (ChannelSparkNetwork.findGridNode(world, hit.getBlockPos()) == null) {
+            return new ActionResult<>(EnumActionResult.PASS, stack);
+        }
+        EnumActionResult result = placeAt(world, player, hand, hit.getBlockPos());
+        return new ActionResult<>(result, player.getHeldItem(hand));
+    }
+
+    private static EnumActionResult placeAt(World world, EntityPlayer player, EnumHand hand, BlockPos targetPos) {
+        BlockPos sparkBlock = targetPos.up();
+        if (ChannelSparkNetwork.hasSparkInBlock(world, sparkBlock)) {
+            return EnumActionResult.FAIL;
         }
 
-        EnumActionResult result = spawn(world, player, hand, spark);
-        return new ActionResult<>(result, player.getHeldItem(hand));
+        EntityChannelSpark spark = new EntityChannelSpark(world,
+                targetPos.getX() + 0.5D, targetPos.getY() + 1.5D, targetPos.getZ() + 0.5D);
+        spark.setTarget(targetPos);
+        return spawn(world, player, hand, spark);
     }
 
     private static EnumActionResult spawn(World world, EntityPlayer player, EnumHand hand, EntityChannelSpark spark) {
