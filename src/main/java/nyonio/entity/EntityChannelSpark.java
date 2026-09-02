@@ -7,8 +7,10 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.EnumHand;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
+import net.minecraft.util.math.RayTraceResult;
 import net.minecraft.world.World;
 import nyonio.channel.ChannelSparkNetwork;
+import vazkii.botania.common.item.ModItems;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -129,7 +131,23 @@ public class EntityChannelSpark extends Entity {
 
     @Override
     public boolean processInitialInteract(EntityPlayer player, EnumHand hand) {
-        return false;
+        ItemStack stack = player.getHeldItem(hand);
+        if (stack.isEmpty() || stack.getItem() != ModItems.twigWand) {
+            return false;
+        }
+
+        if (world.isRemote) {
+            player.swingArm(hand);
+            return true;
+        }
+
+        if (player.isSneaking()) {
+            setDead();
+            entityDropItem(new ItemStack(nyonio.BotaniaApplie.channelSpark), 0.0F);
+        } else {
+            ChannelSparkNetwork.showNetwork(player, this);
+        }
+        return true;
     }
 
 }

@@ -8,9 +8,13 @@ import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.world.World;
 import nyonio.ChannelSparkConfig;
 import nyonio.entity.EntityChannelSpark;
+import vazkii.botania.common.network.PacketBotaniaEffect;
+import vazkii.botania.common.network.PacketHandler;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
@@ -99,6 +103,26 @@ public final class ChannelSparkNetwork {
             return first.getPlacementOrder() < second.getPlacementOrder();
         }
         return first.getEntityId() < second.getEntityId();
+    }
+
+    public static void showNetwork(EntityPlayer player, EntityChannelSpark source) {
+        if (player == null || source == null || source.world == null || source.world.isRemote) {
+            return;
+        }
+        for (EntityChannelSpark other : source.world.getEntitiesWithinAABB(EntityChannelSpark.class,
+                source.getEntityBoundingBox().grow(ChannelSparkConfig.getTransferRadius()))) {
+            if (other == source || other.isDead || !isPrimaryInBlock(other)
+                    || source.getDistanceSq(other) > (double) ChannelSparkConfig.getTransferRadius()
+                    * (double) ChannelSparkConfig.getTransferRadius()) {
+                continue;
+            }
+            if (source.getLinks().containsKey(other.getUniqueID())) {
+                PacketHandler.sendTo((net.minecraft.entity.player.EntityPlayerMP) player,
+                        new PacketBotaniaEffect(PacketBotaniaEffect.EffectType.SPARK_NET_INDICATOR,
+                                source.posX, source.posY, source.posZ,
+                                source.getEntityId(), other.getEntityId()));
+            }
+        }
     }
 
     public static void tick(EntityChannelSpark spark) {

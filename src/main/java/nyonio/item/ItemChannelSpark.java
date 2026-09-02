@@ -9,6 +9,7 @@ import net.minecraft.util.EnumFacing;
 import net.minecraft.util.EnumHand;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.RayTraceResult;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 import nyonio.channel.ChannelSparkNetwork;
 import nyonio.entity.EntityChannelSpark;
@@ -52,11 +53,25 @@ public class ItemChannelSpark extends Item {
         }
 
         RayTraceResult hit = player.rayTrace(5.0D, 1.0F);
-        if (hit == null || hit.typeOfHit != RayTraceResult.Type.BLOCK) {
-            return new ActionResult<>(EnumActionResult.PASS, stack);
+        EnumActionResult result;
+        if (hit != null && hit.typeOfHit == RayTraceResult.Type.BLOCK) {
+            result = placeAt(world, player, hand, hit.getBlockPos());
+        } else {
+            Vec3d eyes = player.getPositionEyes(1.0F);
+            Vec3d look = player.getLookVec();
+            Vec3d location = eyes.addVector(look.x * 3.0D, look.y * 3.0D, look.z * 3.0D);
+            result = placeFloating(world, player, hand, location);
         }
-        EnumActionResult result = placeAt(world, player, hand, hit.getBlockPos());
         return new ActionResult<>(result, player.getHeldItem(hand));
+    }
+
+    private static EnumActionResult placeFloating(World world, EntityPlayer player, EnumHand hand, Vec3d location) {
+        BlockPos containingBlock = new BlockPos(location);
+        if (ChannelSparkNetwork.hasSparkInBlock(world, containingBlock)) {
+            return EnumActionResult.FAIL;
+        }
+        EntityChannelSpark spark = new EntityChannelSpark(world, location.x, location.y, location.z);
+        return spawn(world, player, hand, spark);
     }
 
     private static EnumActionResult placeAt(World world, EntityPlayer player, EnumHand hand, BlockPos targetPos) {
