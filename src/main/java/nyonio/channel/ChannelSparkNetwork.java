@@ -139,7 +139,8 @@ public final class ChannelSparkNetwork {
         }
 
         if (!spark.hasTarget()) {
-            clear(spark);
+            // A spark placed in the air has no AE endpoint, but it is still a
+            // valid floating spark and must remain in the world.
             return;
         }
 
@@ -319,19 +320,20 @@ public final class ChannelSparkNetwork {
             if (!"getGridNode".equals(method.getName())) {
                 continue;
             }
-            method.setAccessible(true);
-            Class<?> parameter = method.getParameterTypes()[0];
             try {
-                if (method.getParameterTypes().length == 0) {
+                method.setAccessible(true);
+                Class<?>[] parameterTypes = method.getParameterTypes();
+                if (parameterTypes.length == 0) {
                     Object node = method.invoke(object);
                     if (node instanceof IGridNode && isUsable((IGridNode) node)) {
                         return (IGridNode) node;
                     }
                     continue;
                 }
-                if (method.getParameterTypes().length != 1) {
+                if (parameterTypes.length != 1) {
                     continue;
                 }
+                Class<?> parameter = parameterTypes[0];
                 if (parameter.isEnum()) {
                     Object[] values = parameter.getEnumConstants();
                     for (Object value : values) {
