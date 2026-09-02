@@ -23,7 +23,9 @@ public class EntityChannelSpark extends Entity {
 
     public EntityChannelSpark(World world) {
         super(world);
+        isImmuneToFire = true;
         setSize(0.25F, 0.25F);
+        setNoGravity(true);
     }
 
     public EntityChannelSpark(World world, double x, double y, double z) {
@@ -84,6 +86,11 @@ public class EntityChannelSpark extends Entity {
             ChannelSparkNetwork.clear(this);
         }
         super.setDead();
+    }
+
+    @Override
+    public ItemStack getPickedResult(net.minecraft.util.math.RayTraceResult target) {
+        return new ItemStack(nyonio.BotaniaApplie.channelSpark);
     }
 
     @Override

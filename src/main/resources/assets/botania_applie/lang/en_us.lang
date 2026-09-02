@@ -40,3 +40,4 @@ botania_applie.tooltip.mana_card_rate=Generates: %d mana/s
 botania_applie.tooltip.mana_card_installed=Installed Cards: %d/%d
 botania_applie.tooltip.mana_card_gen=Mana Generation: %d mana/s
 item.botania_applie.fluixpool_card.name=Fluix Mana Pool Card
+item.botania_applie.channel_spark.name=Channel Spark

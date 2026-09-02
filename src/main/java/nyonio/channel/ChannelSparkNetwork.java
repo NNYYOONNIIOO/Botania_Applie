@@ -182,6 +182,18 @@ public final class ChannelSparkNetwork {
             }
         } catch (Throwable ignored) {
         }
+
+        try {
+            Method getPart = tile.getClass().getMethod("getPart", AEPartLocation.class);
+            for (AEPartLocation location : AEPartLocation.SIDE_LOCATIONS) {
+                Object part = getPart.invoke(tile, location);
+                node = findGridNodeOnObject(part);
+                if (isUsable(node)) {
+                    return node;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
         return null;
     }
 

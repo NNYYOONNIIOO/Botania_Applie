@@ -18,6 +18,7 @@ import nyonio.client.handler.FluixPoolHUDHandler;
 import nyonio.client.handler.ManaTerminalHandler;
 import nyonio.client.model.ManaPacketModel;
 import nyonio.entity.EntityChannelSpark;
+import vazkii.botania.common.item.ModItems;
 import nyonio.client.render.RenderTileFluixManaPool;
 import nyonio.tile.TileFluixManaPool;
 import vazkii.botania.api.state.enums.PoolVariant;
@@ -38,7 +39,7 @@ public class ClientProxy extends CommonProxy {
         MinecraftForge.EVENT_BUS.register(new ManaTerminalHandler());
         ModelLoaderRegistry.registerLoader(new ManaPacketModel.Loader());
         RenderingRegistry.registerEntityRenderingHandler(EntityChannelSpark.class,
-            manager -> new RenderSnowball<>(manager, BotaniaApplie.channelSpark, Minecraft.getMinecraft().getRenderItem()));
+            manager -> new RenderSnowball<>(manager, ModItems.spark, Minecraft.getMinecraft().getRenderItem()));
     }
     
     @Override

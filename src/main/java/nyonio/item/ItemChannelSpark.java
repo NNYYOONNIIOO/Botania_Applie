@@ -34,9 +34,7 @@ public class ItemChannelSpark extends Item {
         if (target != null) {
             spark.setTarget(pos);
         }
-        world.spawnEntity(spark);
-        consume(player, hand);
-        return EnumActionResult.SUCCESS;
+        return spawn(world, player, hand, spark);
     }
 
     @Override
@@ -65,9 +63,16 @@ public class ItemChannelSpark extends Item {
             spark = new EntityChannelSpark(world, location.x, location.y, location.z);
         }
 
-        world.spawnEntity(spark);
+        EnumActionResult result = spawn(world, player, hand, spark);
+        return new ActionResult<>(result, player.getHeldItem(hand));
+    }
+
+    private static EnumActionResult spawn(World world, EntityPlayer player, EnumHand hand, EntityChannelSpark spark) {
+        if (!world.spawnEntity(spark)) {
+            return EnumActionResult.FAIL;
+        }
         consume(player, hand);
-        return new ActionResult<>(EnumActionResult.SUCCESS, stack);
+        return EnumActionResult.SUCCESS;
     }
 
     private static void consume(EntityPlayer player, EnumHand hand) {

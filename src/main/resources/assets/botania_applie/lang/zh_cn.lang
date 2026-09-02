@@ -40,3 +40,4 @@ botania_applie.tooltip.mana_card_rate=产生魔力: %d mana/s
 botania_applie.tooltip.mana_card_installed=已安装光环卡: %d/%d
 botania_applie.tooltip.mana_card_gen=光环产魔: %d mana/s
 item.botania_applie.fluixpool_card.name=福鲁伊克斯魔力池卡
+item.botania_applie.channel_spark.name=频道火花
