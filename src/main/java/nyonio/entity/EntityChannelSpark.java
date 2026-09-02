@@ -24,7 +24,6 @@ public class EntityChannelSpark extends Entity {
     public EntityChannelSpark(World world) {
         super(world);
         isImmuneToFire = true;
-        setSize(0.25F, 0.25F);
         setNoGravity(true);
     }
 
@@ -51,6 +50,7 @@ public class EntityChannelSpark extends Entity {
 
     @Override
     protected void entityInit() {
+        setSize(0.1F, 0.5F);
     }
 
     @Override
@@ -95,7 +95,7 @@ public class EntityChannelSpark extends Entity {
 
     @Override
     public boolean canBeCollidedWith() {
-        return false;
+        return true;
     }
 
     @Override
