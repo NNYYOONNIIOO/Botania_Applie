@@ -13,6 +13,7 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.world.World;
+import nyonio.BotaniaApplie;
 import nyonio.ChannelSparkConfig;
 import nyonio.entity.EntityChannelSpark;
 import vazkii.botania.common.network.PacketBotaniaEffect;
@@ -27,6 +28,7 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -437,6 +439,14 @@ public final class ChannelSparkNetwork {
             return null;
         }
 
+        // The endpoint may be an inactive CANNOT_CARRY interface node. Its
+        // local connection collection is not reliable while AE2 is rebuilding
+        // channels, but the owning grid still exposes all of its nodes.
+        IGridNode gridCarrying = findCarryingNodeFromGrid(endpoint);
+        if (gridCarrying != null) {
+            return gridCarrying;
+        }
+
         ArrayDeque<IGridNode> queue = new ArrayDeque<>();
         Set<IGridNode> visited = Collections.newSetFromMap(
                 new IdentityHashMap<IGridNode, Boolean>());
@@ -447,10 +457,16 @@ public final class ChannelSparkNetwork {
         // tick scan without bounds. The first carrying node is normally the
         // adjacent cable-bus node, so this limit is only a safety net.
         int scanned = 0;
+        IGridNode fallback = null;
         while (!queue.isEmpty() && scanned++ < 4096) {
             IGridNode node = queue.removeFirst();
             if (isCarryingNode(node)) {
-                return node;
+                if (hasDenseCapacity(node)) {
+                    return node;
+                }
+                if (fallback == null) {
+                    fallback = node;
+                }
             }
 
             try {
@@ -472,7 +488,86 @@ public final class ChannelSparkNetwork {
                 // A grid can be rebuilding while a spark is ticking.
             }
         }
-        return null;
+        return fallback;
+    }
+
+    /**
+     * Finds a dense carrying node from the complete AE grid when possible.
+     * A dense node is preferred because the wireless bridge is intended to
+     * carry the configured 32-channel capacity; a normal carrying node is a
+     * safe fallback for networks that do not contain dense cabling.
+     */
+    private static IGridNode findCarryingNodeFromGrid(IGridNode endpoint) {
+        try {
+            Object grid = endpoint.getGrid();
+            if (grid == null) {
+                return null;
+            }
+            Method getNodes = grid.getClass().getMethod("getNodes");
+            getNodes.setAccessible(true);
+            Object nodes = getNodes.invoke(grid);
+            return findPreferredCarryingNode(nodes);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static IGridNode findPreferredCarryingNode(Object nodes) {
+        if (nodes == null) {
+            return null;
+        }
+
+        IGridNode fallback = null;
+        if (nodes instanceof Iterable) {
+            for (Object value : (Iterable<?>) nodes) {
+                IGridNode candidate = asCarryingNode(value);
+                if (candidate == null) {
+                    continue;
+                }
+                if (hasDenseCapacity(candidate)) {
+                    return candidate;
+                }
+                if (fallback == null) {
+                    fallback = candidate;
+                }
+            }
+            return fallback;
+        }
+
+        try {
+            Method iteratorMethod = nodes.getClass().getMethod("iterator");
+            Object iteratorObject = iteratorMethod.invoke(nodes);
+            if (iteratorObject instanceof Iterator) {
+                Iterator<?> iterator = (Iterator<?>) iteratorObject;
+                while (iterator.hasNext()) {
+                    IGridNode candidate = asCarryingNode(iterator.next());
+                    if (candidate == null) {
+                        continue;
+                    }
+                    if (hasDenseCapacity(candidate)) {
+                        return candidate;
+                    }
+                    if (fallback == null) {
+                        fallback = candidate;
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return fallback;
+    }
+
+    private static IGridNode asCarryingNode(Object value) {
+        return value instanceof IGridNode && isCarryingNode((IGridNode) value)
+                ? (IGridNode) value : null;
+    }
+
+    private static boolean hasDenseCapacity(IGridNode node) {
+        try {
+            return isCarryingNode(node) && node.hasFlag(GridFlags.DENSE_CAPACITY);
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     private static boolean isCarryingNode(IGridNode node) {
