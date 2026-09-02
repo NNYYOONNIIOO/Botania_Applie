@@ -28,7 +28,6 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -498,30 +497,17 @@ public final class ChannelSparkNetwork {
      * safe fallback for networks that do not contain dense cabling.
      */
     private static IGridNode findCarryingNodeFromGrid(IGridNode endpoint) {
+        IGridNode fallback = null;
         try {
-            Object grid = endpoint.getGrid();
-            if (grid == null) {
+            if (endpoint.getGrid() == null) {
                 return null;
             }
-            Method getNodes = grid.getClass().getMethod("getNodes");
-            getNodes.setAccessible(true);
-            Object nodes = getNodes.invoke(grid);
-            return findPreferredCarryingNode(nodes);
-        } catch (Throwable ignored) {
-            return null;
-        }
-    }
 
-    private static IGridNode findPreferredCarryingNode(Object nodes) {
-        if (nodes == null) {
-            return null;
-        }
-
-        IGridNode fallback = null;
-        if (nodes instanceof Iterable) {
-            for (Object value : (Iterable<?>) nodes) {
-                IGridNode candidate = asCarryingNode(value);
-                if (candidate == null) {
+            // IGrid.getNodes() is part of AE2's public API. Use it directly
+            // instead of reflecting on the concrete Grid implementation; the
+            // latter can silently fail on Extended Life or other AE2 builds.
+            for (IGridNode candidate : endpoint.getGrid().getNodes()) {
+                if (!isCarryingNode(candidate)) {
                     continue;
                 }
                 if (hasDenseCapacity(candidate)) {
@@ -531,35 +517,9 @@ public final class ChannelSparkNetwork {
                     fallback = candidate;
                 }
             }
-            return fallback;
-        }
-
-        try {
-            Method iteratorMethod = nodes.getClass().getMethod("iterator");
-            Object iteratorObject = iteratorMethod.invoke(nodes);
-            if (iteratorObject instanceof Iterator) {
-                Iterator<?> iterator = (Iterator<?>) iteratorObject;
-                while (iterator.hasNext()) {
-                    IGridNode candidate = asCarryingNode(iterator.next());
-                    if (candidate == null) {
-                        continue;
-                    }
-                    if (hasDenseCapacity(candidate)) {
-                        return candidate;
-                    }
-                    if (fallback == null) {
-                        fallback = candidate;
-                    }
-                }
-            }
         } catch (Throwable ignored) {
         }
         return fallback;
-    }
-
-    private static IGridNode asCarryingNode(Object value) {
-        return value instanceof IGridNode && isCarryingNode((IGridNode) value)
-                ? (IGridNode) value : null;
     }
 
     private static boolean hasDenseCapacity(IGridNode node) {
