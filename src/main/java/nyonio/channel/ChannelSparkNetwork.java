@@ -532,7 +532,12 @@ public final class ChannelSparkNetwork {
 
     private static boolean isCarryingNode(IGridNode node) {
         try {
-            return node != null && node.isActive()
+            // Do not require isActive() here. A network may report a machine
+            // as inactive precisely because it is waiting for a channel; the
+            // wireless bridge must be allowed to connect before AE2 can
+            // recalculate that channel state. The node must already belong to
+            // an AE grid and must be able to carry a route.
+            return node != null && node.getGrid() != null
                     && !node.hasFlag(GridFlags.CANNOT_CARRY);
         } catch (Throwable ignored) {
             return false;
