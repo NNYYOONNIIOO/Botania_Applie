@@ -4,6 +4,8 @@ import appeng.api.AEApi;
 import appeng.api.networking.IGridHost;
 import appeng.api.networking.IGridNode;
 import appeng.api.networking.IGridConnection;
+import appeng.api.networking.GridFlags;
+import appeng.api.exceptions.FailedConnectionException;
 import appeng.api.util.AEPartLocation;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
@@ -421,14 +423,16 @@ public final class ChannelSparkNetwork {
             return false;
         }
         try {
-            if (!node.isActive() || node.getGrid() == null) {
+            if (!node.isActive()) {
                 return false;
             }
-            Method getFlags = node.getClass().getMethod("getFlags");
-            Object flags = getFlags.invoke(node);
-            return !(flags instanceof Set) || !((Set<?>) flags).contains(appeng.api.networking.GridFlags.CANNOT_CARRY);
+            // A channel spark is an external bridge.  The endpoint itself may
+            // be a CANNOT_CARRY machine node (for example an ME interface),
+            // but it must still be a live AE node.  Rejecting that flag here
+            // prevents the spark bridge from ever reaching the ME network.
+            return true;
         } catch (Throwable ignored) {
-            return node.isActive() && node.getGrid() != null;
+            return false;
         }
     }
 
