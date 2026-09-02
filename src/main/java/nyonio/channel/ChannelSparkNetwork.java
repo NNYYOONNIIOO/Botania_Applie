@@ -458,14 +458,19 @@ public final class ChannelSparkNetwork {
         // adjacent cable-bus node, so this limit is only a safety net.
         int scanned = 0;
         IGridNode fallback = null;
+        IGridNode restrictedFallback = null;
         while (!queue.isEmpty() && scanned++ < 4096) {
             IGridNode node = queue.removeFirst();
             if (isCarryingNode(node)) {
-                if (hasDenseCapacity(node)) {
-                    return node;
-                }
-                if (fallback == null) {
-                    fallback = node;
+                if (isPreferredCarryingNode(node)) {
+                    if (hasDenseCapacity(node)) {
+                        return node;
+                    }
+                    if (fallback == null) {
+                        fallback = node;
+                    }
+                } else if (restrictedFallback == null) {
+                    restrictedFallback = node;
                 }
             }
 
@@ -488,7 +493,7 @@ public final class ChannelSparkNetwork {
                 // A grid can be rebuilding while a spark is ticking.
             }
         }
-        return fallback;
+        return fallback == null ? restrictedFallback : fallback;
     }
 
     /**
@@ -499,6 +504,7 @@ public final class ChannelSparkNetwork {
      */
     private static IGridNode findCarryingNodeFromGrid(IGridNode endpoint) {
         IGridNode fallback = null;
+        IGridNode restrictedFallback = null;
         try {
             if (endpoint.getGrid() == null) {
                 return null;
@@ -511,21 +517,41 @@ public final class ChannelSparkNetwork {
                 if (!isCarryingNode(candidate)) {
                     continue;
                 }
-                if (hasDenseCapacity(candidate)) {
-                    return candidate;
-                }
-                if (fallback == null) {
-                    fallback = candidate;
+                if (isPreferredCarryingNode(candidate)) {
+                    if (hasDenseCapacity(candidate)) {
+                        return candidate;
+                    }
+                    if (fallback == null) {
+                        fallback = candidate;
+                    }
+                } else if (restrictedFallback == null) {
+                    restrictedFallback = candidate;
                 }
             }
         } catch (Throwable ignored) {
         }
-        return fallback;
+        return fallback == null ? restrictedFallback : fallback;
     }
 
     private static boolean hasDenseCapacity(IGridNode node) {
         try {
             return isCarryingNode(node) && node.hasFlag(GridFlags.DENSE_CAPACITY);
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    /**
+     * Prefer a cable/path node that does not itself consume a channel. An AE2
+     * device can technically carry a route, but choosing one as the bridge
+     * endpoint can make the first channel allocation depend on that device's
+     * own channel requirement and leave the wireless link unusable.
+     */
+    private static boolean isPreferredCarryingNode(IGridNode node) {
+        try {
+            return isCarryingNode(node)
+                    && !node.hasFlag(GridFlags.REQUIRE_CHANNEL)
+                    && !node.hasFlag(GridFlags.CANNOT_CARRY_COMPRESSED);
         } catch (Throwable ignored) {
             return false;
         }
@@ -693,7 +719,8 @@ public final class ChannelSparkNetwork {
             } finally {
                 PENDING_CHANNEL_CAPACITY.remove();
             }
-        } catch (Throwable ignored) {
+        } catch (Throwable error) {
+            logConnectionFailure("AE API", first, second, error);
         }
 
         try {
@@ -711,9 +738,34 @@ public final class ChannelSparkNetwork {
             } finally {
                 PENDING_CHANNEL_CAPACITY.remove();
             }
-        } catch (Throwable ignored) {
+        } catch (Throwable error) {
+            logConnectionFailure("GridConnection reflection", first, second, error);
         }
         return null;
+    }
+
+    private static void logConnectionFailure(String mechanism, IGridNode first,
+                                              IGridNode second, Throwable error) {
+        try {
+            if (BotaniaApplie.getLogger() != null && BotaniaApplie.getLogger().isDebugEnabled()) {
+                BotaniaApplie.getLogger().debug(
+                        "Channel spark AE bridge creation failed via " + mechanism
+                                + " (" + describeNode(first) + " -> " + describeNode(second) + ")",
+                        error);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static String describeNode(IGridNode node) {
+        if (node == null) {
+            return "null";
+        }
+        try {
+            return node.getGridBlock().getMachine().getClass().getName();
+        } catch (Throwable ignored) {
+            return node.getClass().getName();
+        }
     }
 
     /**
@@ -802,15 +854,29 @@ public final class ChannelSparkNetwork {
         if (connection == null) {
             return;
         }
+        IGridNode first = null;
+        IGridNode second = null;
+        if (connection instanceof IGridConnection) {
+            try {
+                first = ((IGridConnection) connection).a();
+                second = ((IGridConnection) connection).b();
+            } catch (Throwable ignored) {
+            }
+        }
+        boolean destroyed = false;
         for (String name : new String[]{"destroy", "disconnect", "close"}) {
             try {
                 Method method = connection.getClass().getMethod(name);
                 if (!Modifier.isStatic(method.getModifiers()) && method.getParameterTypes().length == 0) {
                     method.invoke(connection);
-                    return;
+                    destroyed = true;
+                    break;
                 }
             } catch (Throwable ignored) {
             }
+        }
+        if (destroyed) {
+            repathAfterConnection(first, second);
         }
     }
 }
