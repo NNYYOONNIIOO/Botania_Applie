@@ -27,6 +27,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -47,6 +48,7 @@ public final class ChannelSparkNetwork {
     private static final String GRID_CONNECTION_CLASS = "appeng.me.GridConnection";
     private static final Map<IGridConnection, Integer> CHANNEL_CAPACITIES =
             Collections.synchronizedMap(new WeakHashMap<IGridConnection, Integer>());
+    private static final Map<BridgeKey, BridgeRecord> AE_BRIDGES = new HashMap<>();
     private static final ThreadLocal<Integer> PENDING_CHANNEL_CAPACITY = new ThreadLocal<>();
 
     private ChannelSparkNetwork() {
@@ -69,6 +71,51 @@ public final class ChannelSparkNetwork {
 
         private Link(EntityChannelSpark other, Object connection) {
             this.other = other;
+            this.connection = connection;
+        }
+    }
+
+    private static final class BridgeKey {
+        private final UUID first;
+        private final UUID second;
+
+        private BridgeKey(UUID first, UUID second) {
+            if (first.compareTo(second) <= 0) {
+                this.first = first;
+                this.second = second;
+            } else {
+                this.first = second;
+                this.second = first;
+            }
+        }
+
+        @Override
+        public boolean equals(Object object) {
+            if (this == object) {
+                return true;
+            }
+            if (!(object instanceof BridgeKey)) {
+                return false;
+            }
+            BridgeKey other = (BridgeKey) object;
+            return first.equals(other.first) && second.equals(other.second);
+        }
+
+        @Override
+        public int hashCode() {
+            return 31 * first.hashCode() + second.hashCode();
+        }
+    }
+
+    private static final class BridgeRecord {
+        private final EntityChannelSpark first;
+        private final EntityChannelSpark second;
+        private final IGridConnection connection;
+
+        private BridgeRecord(EntityChannelSpark first, EntityChannelSpark second,
+                             IGridConnection connection) {
+            this.first = first;
+            this.second = second;
             this.connection = connection;
         }
     }
@@ -165,6 +212,9 @@ public final class ChannelSparkNetwork {
             }
             connect(spark, other);
         }
+
+        cleanupBridgeRecords();
+        reconcileAeBridges(spark);
     }
 
     public static void clear(EntityChannelSpark spark) {
@@ -176,6 +226,7 @@ public final class ChannelSparkNetwork {
             unlink(spark, link.other, link.connection);
         }
         spark.getLinks().clear();
+        removeBridgesForSpark(spark);
     }
 
     private static void removeInvalidLinks(EntityChannelSpark spark) {
@@ -198,22 +249,144 @@ public final class ChannelSparkNetwork {
     private static void connect(EntityChannelSpark first, EntityChannelSpark second) {
         Link existing = first.getLinks().get(second.getUniqueID());
         if (existing != null) {
-            if (existing.connection == null) {
-                Object connection = createGridConnectionIfPossible(first, second);
-                if (connection != null) {
-                    first.getLinks().put(second.getUniqueID(), new Link(second, connection));
-                    second.getLinks().put(first.getUniqueID(), new Link(first, connection));
-                }
-            }
             return;
         }
 
-        // The logical spark link is created even when one or both sparks are
-        // floating. It is upgraded to an AE connection as soon as both ends
-        // expose usable grid nodes.
-        Object connection = createGridConnectionIfPossible(first, second);
-        first.getLinks().put(second.getUniqueID(), new Link(second, connection));
-        second.getLinks().put(first.getUniqueID(), new Link(first, connection));
+        // Keep the logical spark graph independent from AE endpoints. The
+        // whole component is reconciled below, which also supports a chain
+        // containing floating sparks between two AE networks.
+        first.getLinks().put(second.getUniqueID(), new Link(second, null));
+        second.getLinks().put(first.getUniqueID(), new Link(first, null));
+    }
+
+    private static void reconcileAeBridges(EntityChannelSpark source) {
+        List<EntityChannelSpark> network = collectLogicalNetwork(source);
+        List<EntityChannelSpark> endpointSparks = new ArrayList<>();
+        for (EntityChannelSpark spark : network) {
+            if (spark.hasTarget() && findBridgeNode(spark.world, spark.getTargetPos()) != null) {
+                endpointSparks.add(spark);
+            }
+        }
+        if (endpointSparks.size() < 2) {
+            return;
+        }
+
+        EntityChannelSpark anchor = endpointSparks.get(0);
+        for (int index = 1; index < endpointSparks.size(); index++) {
+            EntityChannelSpark other = endpointSparks.get(index);
+            BridgeKey key = new BridgeKey(anchor.getUniqueID(), other.getUniqueID());
+            BridgeRecord existing = AE_BRIDGES.get(key);
+            if (existing != null) {
+                if (isConnectionAlive(existing.connection)) {
+                    continue;
+                }
+                AE_BRIDGES.remove(key);
+            }
+
+            Object connection = createGridConnectionIfPossible(anchor, other);
+            if (connection instanceof IGridConnection) {
+                AE_BRIDGES.put(key, new BridgeRecord(anchor, other,
+                        (IGridConnection) connection));
+            }
+        }
+    }
+
+    private static List<EntityChannelSpark> collectLogicalNetwork(EntityChannelSpark source) {
+        List<EntityChannelSpark> network = new ArrayList<>();
+        if (source == null || source.isDead || source.world == null) {
+            return network;
+        }
+
+        Set<UUID> visited = new HashSet<>();
+        List<EntityChannelSpark> queue = new ArrayList<>();
+        queue.add(source);
+        visited.add(source.getUniqueID());
+        for (int index = 0; index < queue.size(); index++) {
+            EntityChannelSpark current = queue.get(index);
+            if (current == null || current.isDead || current.world != source.world
+                    || !isPrimaryInBlock(current)) {
+                continue;
+            }
+            network.add(current);
+            for (Link link : new ArrayList<>(current.getLinks().values())) {
+                EntityChannelSpark other = link.other;
+                if (other != null && !other.isDead && other.world == source.world
+                        && isPrimaryInBlock(other) && visited.add(other.getUniqueID())) {
+                    queue.add(other);
+                }
+            }
+        }
+        return network;
+    }
+
+    private static void cleanupBridgeRecords() {
+        java.util.Iterator<Map.Entry<BridgeKey, BridgeRecord>> iterator =
+                AE_BRIDGES.entrySet().iterator();
+        while (iterator.hasNext()) {
+            BridgeRecord record = iterator.next().getValue();
+            boolean valid = record.first != null && record.second != null
+                    && !record.first.isDead && !record.second.isDead
+                    && record.first.world == record.second.world
+                    && isPrimaryInBlock(record.first) && isPrimaryInBlock(record.second)
+                    && areLogicallyConnected(record.first, record.second)
+                    && isConnectionAlive(record.connection);
+            if (!valid) {
+                destroyConnection(record.connection);
+                iterator.remove();
+            }
+        }
+    }
+
+    private static boolean areLogicallyConnected(EntityChannelSpark first,
+                                                  EntityChannelSpark second) {
+        for (EntityChannelSpark candidate : collectLogicalNetwork(first)) {
+            if (candidate == second) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isConnectionAlive(IGridConnection connection) {
+        if (connection == null) {
+            return false;
+        }
+        try {
+            return hasConnection(connection.a(), connection)
+                    && hasConnection(connection.b(), connection);
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private static boolean hasConnection(IGridNode node, IGridConnection expected) {
+        if (node == null || expected == null) {
+            return false;
+        }
+        try {
+            for (IGridConnection connection : node.getConnections()) {
+                if (connection == expected) {
+                    return true;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return false;
+    }
+
+    private static void removeBridgesForSpark(EntityChannelSpark spark) {
+        if (spark == null) {
+            return;
+        }
+        java.util.Iterator<Map.Entry<BridgeKey, BridgeRecord>> iterator =
+                AE_BRIDGES.entrySet().iterator();
+        while (iterator.hasNext()) {
+            BridgeRecord record = iterator.next().getValue();
+            if (record.first == spark || record.second == spark) {
+                destroyConnection(record.connection);
+                iterator.remove();
+            }
+        }
     }
 
     private static Object createGridConnectionIfPossible(EntityChannelSpark first, EntityChannelSpark second) {
