@@ -5,6 +5,7 @@ import appeng.api.networking.IGridHost;
 import appeng.api.networking.IGridNode;
 import appeng.api.networking.IGridConnection;
 import appeng.api.networking.GridFlags;
+import appeng.api.networking.pathing.IPathingGrid;
 import appeng.api.util.AEPartLocation;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
@@ -687,6 +688,7 @@ public final class ChannelSparkNetwork {
             try {
                 IGridConnection connection = AEApi.instance().grid().createGridConnection(first, second);
                 registerConnection(connection);
+                repathAfterConnection(first, second);
                 return connection;
             } finally {
                 PENDING_CHANNEL_CAPACITY.remove();
@@ -704,6 +706,7 @@ public final class ChannelSparkNetwork {
             try {
                 Object connection = factory.invoke(null, first, second, AEPartLocation.INTERNAL);
                 registerConnection(connection);
+                repathAfterConnection(first, second);
                 return connection;
             } finally {
                 PENDING_CHANNEL_CAPACITY.remove();
@@ -711,6 +714,30 @@ public final class ChannelSparkNetwork {
         } catch (Throwable ignored) {
         }
         return null;
+    }
+
+    /**
+     * AE2's GridConnection factory schedules its path rebuild before it adds
+     * the newly-created connection to both endpoint nodes. Rebuild once more
+     * after the factory returns so channel consumers can see this wireless
+     * bridge immediately instead of waiting for an unrelated grid change.
+     */
+    private static void repathAfterConnection(IGridNode first, IGridNode second) {
+        try {
+            if (first != null && first.getGrid() != null) {
+                IPathingGrid pathing = (IPathingGrid) first.getGrid().getCache(IPathingGrid.class);
+                pathing.repath();
+            }
+        } catch (Throwable ignored) {
+        }
+        try {
+            if (second != null && second.getGrid() != null
+                    && (first == null || second.getGrid() != first.getGrid())) {
+                IPathingGrid pathing = (IPathingGrid) second.getGrid().getCache(IPathingGrid.class);
+                pathing.repath();
+            }
+        } catch (Throwable ignored) {
+        }
     }
 
     private static Object[] buildArguments(Class<?>[] parameterTypes, IGridNode first,
