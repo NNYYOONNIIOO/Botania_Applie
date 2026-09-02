@@ -36,12 +36,14 @@ public final class ChannelSparkNetwork {
     private static final String GRID_CONNECTION_CLASS = "appeng.me.GridConnection";
     private static final Map<IGridConnection, Integer> CHANNEL_CAPACITIES =
             Collections.synchronizedMap(new WeakHashMap<IGridConnection, Integer>());
+    private static final ThreadLocal<Integer> PENDING_CHANNEL_CAPACITY = new ThreadLocal<>();
 
     private ChannelSparkNetwork() {
     }
 
     public static Integer getCapacity(IGridConnection connection) {
-        return connection == null ? null : CHANNEL_CAPACITIES.get(connection);
+        Integer capacity = connection == null ? null : CHANNEL_CAPACITIES.get(connection);
+        return capacity == null ? PENDING_CHANNEL_CAPACITY.get() : capacity;
     }
 
     private static void registerConnection(Object connection) {
@@ -232,9 +234,14 @@ public final class ChannelSparkNetwork {
             return false;
         }
         try {
-            return node.isActive() && node.getGrid() != null;
+            if (!node.isActive() || node.getGrid() == null) {
+                return false;
+            }
+            Method getFlags = node.getClass().getMethod("getFlags");
+            Object flags = getFlags.invoke(node);
+            return !(flags instanceof Set) || !((Set<?>) flags).contains(appeng.api.networking.GridFlags.CANNOT_CARRY);
         } catch (Throwable ignored) {
-            return false;
+            return node.isActive() && node.getGrid() != null;
         }
     }
 
@@ -245,9 +252,14 @@ public final class ChannelSparkNetwork {
             if (!factory.isAccessible()) {
                 factory.setAccessible(true);
             }
-            Object connection = factory.invoke(null, first, second, AEPartLocation.INTERNAL);
-            registerConnection(connection);
-            return connection;
+            PENDING_CHANNEL_CAPACITY.set(ChannelSparkConfig.getChannelCapacity());
+            try {
+                Object connection = factory.invoke(null, first, second, AEPartLocation.INTERNAL);
+                registerConnection(connection);
+                return connection;
+            } finally {
+                PENDING_CHANNEL_CAPACITY.remove();
+            }
         } catch (Throwable ignored) {
         }
         return null;

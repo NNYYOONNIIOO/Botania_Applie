@@ -8,17 +8,11 @@ import net.minecraft.util.EnumHand;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import nyonio.channel.ChannelSparkNetwork;
-import vazkii.botania.api.mana.spark.ISparkAttachable;
-import vazkii.botania.api.mana.spark.ISparkEntity;
-import vazkii.botania.api.mana.spark.SparkUpgradeType;
-
-import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-public class EntityChannelSpark extends Entity implements ISparkEntity {
+public class EntityChannelSpark extends Entity {
     private static final String TARGET_PRESENT = "ChannelSparkTargetPresent";
     private static final String TARGET_X = "ChannelSparkTargetX";
     private static final String TARGET_Y = "ChannelSparkTargetY";
@@ -102,31 +96,4 @@ public class EntityChannelSpark extends Entity implements ISparkEntity {
         return false;
     }
 
-    @Override
-    public ISparkAttachable getAttachedTile() {
-        return null;
-    }
-
-    @Override
-    public Collection<ISparkEntity> getTransfers() {
-        return Collections.emptyList();
-    }
-
-    @Override
-    public void registerTransfer(ISparkEntity entity) {
-    }
-
-    @Override
-    public SparkUpgradeType getUpgrade() {
-        return SparkUpgradeType.NONE;
-    }
-
-    @Override
-    public void setUpgrade(SparkUpgradeType upgrade) {
-    }
-
-    @Override
-    public boolean areIncomingTransfersDone() {
-        return true;
-    }
 }
