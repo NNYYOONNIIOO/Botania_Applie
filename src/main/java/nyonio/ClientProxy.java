@@ -115,6 +115,7 @@ final class ChannelSparkRender extends Render<EntityChannelSpark> {
         GlStateManager.translate((float) x, (float) y, (float) z);
         GlStateManager.enableRescaleNormal();
         GlStateManager.scale(0.5F, 0.5F, 0.5F);
+        bindTexture(TextureMap.LOCATION_BLOCKS_TEXTURE);
         itemRenderer.renderItem(new net.minecraft.item.ItemStack(ModItems.spark),
                 ItemCameraTransforms.TransformType.GROUND);
         GlStateManager.disableRescaleNormal();
