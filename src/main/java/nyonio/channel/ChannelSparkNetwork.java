@@ -1,6 +1,7 @@
 package nyonio.channel;
 
 import appeng.api.AEApi;
+import appeng.api.networking.IGridHost;
 import appeng.api.networking.IGridNode;
 import appeng.api.networking.IGridConnection;
 import appeng.api.util.AEPartLocation;
@@ -266,6 +267,16 @@ public final class ChannelSparkNetwork {
             return null;
         }
 
+        // AE2 cable buses and network tiles expose their active node through
+        // IGridHost. Prefer this public API so an ME interface/part is not
+        // mistaken for a visual or non-carrying cable-bus node.
+        if (tile instanceof IGridHost) {
+            IGridNode hostNode = findGridNodeOnHost((IGridHost) tile);
+            if (isUsable(hostNode)) {
+                return hostNode;
+            }
+        }
+
         IGridNode node = findGridNodeOnObject(tile);
         if (isUsable(node)) {
             return node;
@@ -312,6 +323,13 @@ public final class ChannelSparkNetwork {
     private static IGridNode findGridNodeOnObject(Object object) {
         if (object == null) {
             return null;
+        }
+
+        if (object instanceof IGridHost) {
+            IGridNode hostNode = findGridNodeOnHost((IGridHost) object);
+            if (isUsable(hostNode)) {
+                return hostNode;
+            }
         }
 
         try {
@@ -366,6 +384,19 @@ public final class ChannelSparkNetwork {
                     if (node instanceof IGridNode && isUsable((IGridNode) node)) {
                         return (IGridNode) node;
                     }
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        return null;
+    }
+
+    private static IGridNode findGridNodeOnHost(IGridHost host) {
+        for (AEPartLocation location : AEPartLocation.values()) {
+            try {
+                IGridNode node = host.getGridNode(location);
+                if (isUsable(node)) {
+                    return node;
                 }
             } catch (Throwable ignored) {
             }
