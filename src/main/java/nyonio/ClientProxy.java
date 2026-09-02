@@ -1,12 +1,15 @@
 package nyonio;
 
 import net.minecraft.client.renderer.block.model.ModelResourceLocation;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.entity.RenderSnowball;
 import net.minecraft.item.Item;
 import net.minecraftforge.client.event.ModelRegistryEvent;
 import net.minecraftforge.client.model.ModelLoader;
 import net.minecraftforge.client.model.ModelLoaderRegistry;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.client.registry.ClientRegistry;
+import net.minecraftforge.fml.client.registry.RenderingRegistry;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
 import net.minecraftforge.fml.relauncher.Side;
@@ -14,6 +17,7 @@ import net.minecraftforge.fml.relauncher.SideOnly;
 import nyonio.client.handler.FluixPoolHUDHandler;
 import nyonio.client.handler.ManaTerminalHandler;
 import nyonio.client.model.ManaPacketModel;
+import nyonio.entity.EntityChannelSpark;
 import nyonio.client.render.RenderTileFluixManaPool;
 import nyonio.tile.TileFluixManaPool;
 import vazkii.botania.api.state.enums.PoolVariant;
@@ -33,6 +37,8 @@ public class ClientProxy extends CommonProxy {
         MinecraftForge.EVENT_BUS.register(new FluixPoolHUDHandler());
         MinecraftForge.EVENT_BUS.register(new ManaTerminalHandler());
         ModelLoaderRegistry.registerLoader(new ManaPacketModel.Loader());
+        RenderingRegistry.registerEntityRenderingHandler(EntityChannelSpark.class,
+            manager -> new RenderSnowball<>(manager, BotaniaApplie.channelSpark, Minecraft.getMinecraft().getRenderItem()));
     }
     
     @Override
@@ -74,6 +80,7 @@ public class ClientProxy extends CommonProxy {
             registerItemModel(BotaniaApplie.manaStorageComponent1g, 0, "mana_storage_component_1g");
         }
         registerItemModel(BotaniaApplie.manaPacket, 0, "mana_packet");
+        registerItemModel(BotaniaApplie.channelSpark, 0, "channel_spark");
         registerItemModel(BotaniaApplie.manaCardBasic, 0, "mana_card_basic");
         registerItemModel(BotaniaApplie.manaCardAdvanced, 0, "mana_card_advanced");
         registerItemModel(BotaniaApplie.fluixPoolCard, 0, "fluixpool_card");

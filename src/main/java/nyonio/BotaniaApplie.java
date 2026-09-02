@@ -13,6 +13,7 @@ import net.minecraftforge.fml.common.event.FMLInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.registry.GameRegistry;
+import net.minecraftforge.fml.common.registry.EntityRegistry;
 import net.minecraftforge.fml.common.network.simpleimpl.SimpleNetworkWrapper;
 import net.minecraftforge.fml.common.network.NetworkRegistry;
 import net.minecraftforge.fml.relauncher.Side;
@@ -31,6 +32,8 @@ import nyonio.item.ItemManaCard;
 import nyonio.item.ItemManaPacket;
 import nyonio.item.ItemManaStorageCell;
 import nyonio.item.ItemManaStorageComponent;
+import nyonio.item.ItemChannelSpark;
+import nyonio.entity.EntityChannelSpark;
 import nyonio.tile.TileFluixManaPool;
 import nyonio.terminal_interaction_integration.api.ResourceRegistrationEvent;
 import nyonio.terminal_interaction_integration.api.UpgradeModuleRegistration;
@@ -40,6 +43,7 @@ import zone.rong.mixinbooter.ILateMixinLoader;
 import java.util.Collections;
 import java.util.List;
 import net.minecraftforge.fml.common.Loader;
+import net.minecraft.util.ResourceLocation;
 
 @Mod(modid = BotaniaApplie.MODID, name = BotaniaApplie.NAME, version = BotaniaApplie.VERSION, dependencies = "required-after:appliedenergistics2;required-after:terminal_interaction_integration")
 @Mod.EventBusSubscriber
@@ -93,6 +97,7 @@ public class BotaniaApplie implements ILateMixinLoader
     public static Item manaStorageComponent1g;
 
     public static Item manaPacket;
+    public static Item channelSpark;
 
     public static Item manaCardBasic;
     public static Item manaCardAdvanced;
@@ -145,6 +150,11 @@ public class BotaniaApplie implements ILateMixinLoader
         }
         
         manaPacket = new ItemManaPacket();
+        channelSpark = new ItemChannelSpark().setRegistryName(MODID, "channel_spark")
+                .setUnlocalizedName("botania_applie.channel_spark")
+                .setCreativeTab(BotaniaApplieTab.INSTANCE);
+        EntityRegistry.registerModEntity(new ResourceLocation(MODID, "channel_spark"),
+                EntityChannelSpark.class, "channel_spark", 1, this, 64, 1, true);
 
         manaCardBasic = new ItemManaCard(40).setRegistryName(MODID, "mana_card_basic").setUnlocalizedName("botania_applie.mana_card_basic").setCreativeTab(BotaniaApplieTab.INSTANCE);
         manaCardAdvanced = new ItemManaCard(200).setRegistryName(MODID, "mana_card_advanced").setUnlocalizedName("botania_applie.mana_card_advanced").setCreativeTab(BotaniaApplieTab.INSTANCE);
@@ -211,6 +221,7 @@ public class BotaniaApplie implements ILateMixinLoader
             registry.register(manaStorageComponent1g);
         }
         registry.register(manaPacket);
+        registry.register(channelSpark);
         registry.register(manaCardBasic);
         registry.register(manaCardAdvanced);
         registry.register(fluixPoolCard);

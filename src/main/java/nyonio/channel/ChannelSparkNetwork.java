@@ -1,0 +1,338 @@
+package nyonio.channel;
+
+import appeng.api.networking.IGridNode;
+import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.util.math.AxisAlignedBB;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.World;
+import nyonio.ChannelSparkConfig;
+import nyonio.entity.EntityChannelSpark;
+
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+
+/**
+ * Maintains the wireless AE2 links represented by channel sparks.
+ *
+ * AE2's concrete GridConnection implementation is deliberately used through
+ * reflection.  This keeps the mod compatible with the AE2 Extended Life
+ * builds used by the project while still allowing the link to be a dense
+ * (32-channel) connection when the implementation exposes that constructor.
+ */
+public final class ChannelSparkNetwork {
+    private static final String GRID_CONNECTION_CLASS = "appeng.me.GridConnection";
+
+    private ChannelSparkNetwork() {
+    }
+
+    public static final class Link {
+        private final EntityChannelSpark other;
+        private final Object connection;
+
+        private Link(EntityChannelSpark other, Object connection) {
+            this.other = other;
+            this.connection = connection;
+        }
+    }
+
+    public static void tick(EntityChannelSpark spark) {
+        if (spark == null || spark.isDead || spark.world == null || spark.world.isRemote) {
+            return;
+        }
+
+        if (!spark.hasTarget() || findGridNode(spark.world, spark.getTargetPos()) == null) {
+            clear(spark);
+            return;
+        }
+
+        removeInvalidLinks(spark);
+        int radius = ChannelSparkConfig.getTransferRadius();
+        AxisAlignedBB search = spark.getEntityBoundingBox().grow(radius);
+        List<EntityChannelSpark> nearby = spark.world.getEntitiesWithinAABB(EntityChannelSpark.class, search);
+        for (EntityChannelSpark other : nearby) {
+            if (other == spark || other.isDead || !other.hasTarget() || other.world != spark.world) {
+                continue;
+            }
+            if (spark.getDistanceSq(other) > (double) radius * (double) radius) {
+                continue;
+            }
+            if (spark.getUniqueID().compareTo(other.getUniqueID()) < 0) {
+                connect(spark, other);
+            }
+        }
+    }
+
+    public static void clear(EntityChannelSpark spark) {
+        if (spark == null) {
+            return;
+        }
+        List<Link> links = new ArrayList<>(spark.getLinks().values());
+        for (Link link : links) {
+            unlink(spark, link.other, link.connection);
+        }
+        spark.getLinks().clear();
+    }
+
+    private static void removeInvalidLinks(EntityChannelSpark spark) {
+        int radius = ChannelSparkConfig.getTransferRadius();
+        double maxDistance = (double) radius * (double) radius;
+        List<Link> links = new ArrayList<>(spark.getLinks().values());
+        for (Link link : links) {
+            EntityChannelSpark other = link.other;
+            if (other == null || other.isDead || other.world != spark.world
+                    || !other.hasTarget() || spark.getDistanceSq(other) > maxDistance
+                    || findGridNode(spark.world, spark.getTargetPos()) == null
+                    || findGridNode(other.world, other.getTargetPos()) == null) {
+                unlink(spark, other, link.connection);
+            }
+        }
+    }
+
+    private static void connect(EntityChannelSpark first, EntityChannelSpark second) {
+        if (first.getLinks().containsKey(second.getUniqueID())) {
+            return;
+        }
+
+        IGridNode firstNode = findGridNode(first.world, first.getTargetPos());
+        IGridNode secondNode = findGridNode(second.world, second.getTargetPos());
+        if (firstNode == null || secondNode == null || firstNode == secondNode) {
+            return;
+        }
+
+        try {
+            if (firstNode.getGrid() != null && firstNode.getGrid() == secondNode.getGrid()) {
+                return;
+            }
+        } catch (Throwable ignored) {
+        }
+
+        Object connection = createGridConnection(firstNode, secondNode);
+        if (connection == null) {
+            return;
+        }
+
+        first.getLinks().put(second.getUniqueID(), new Link(second, connection));
+        second.getLinks().put(first.getUniqueID(), new Link(first, connection));
+    }
+
+    private static void unlink(EntityChannelSpark first, EntityChannelSpark second, Object connection) {
+        if (first != null) {
+            first.getLinks().remove(second == null ? null : second.getUniqueID());
+        }
+        if (second != null) {
+            second.getLinks().remove(first == null ? null : first.getUniqueID());
+        }
+        destroyConnection(connection);
+    }
+
+    /**
+     * Finds the active AE2 node exposed by a block or a part on a cable bus.
+     * The reflection fallback covers AE2, AE2FC and Mekanism Energistics
+     * hosts without hard-linking this feature to any one implementation.
+     */
+    public static IGridNode findGridNode(World world, BlockPos pos) {
+        if (world == null || pos == null) {
+            return null;
+        }
+        TileEntity tile = world.getTileEntity(pos);
+        if (tile == null) {
+            return null;
+        }
+
+        IGridNode node = findGridNodeOnObject(tile);
+        if (isUsable(node)) {
+            return node;
+        }
+
+        try {
+            Method getPart = tile.getClass().getMethod("getPart", EnumFacing.class);
+            for (EnumFacing facing : EnumFacing.values()) {
+                Object part = getPart.invoke(tile, facing);
+                node = findGridNodeOnObject(part);
+                if (isUsable(node)) {
+                    return node;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    private static IGridNode findGridNodeOnObject(Object object) {
+        if (object == null) {
+            return null;
+        }
+
+        try {
+            Method getProxy = object.getClass().getMethod("getProxy");
+            Object proxy = getProxy.invoke(object);
+            if (proxy != null) {
+                Method getNode = proxy.getClass().getMethod("getNode");
+                Object node = getNode.invoke(proxy);
+                if (node instanceof IGridNode && isUsable((IGridNode) node)) {
+                    return (IGridNode) node;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+
+        for (Method method : object.getClass().getMethods()) {
+            if (!"getGridNode".equals(method.getName()) || method.getParameterTypes().length != 1) {
+                continue;
+            }
+            Class<?> parameter = method.getParameterTypes()[0];
+            try {
+                if (parameter.isEnum()) {
+                    Object[] values = parameter.getEnumConstants();
+                    for (Object value : values) {
+                        Object node = method.invoke(object, value);
+                        if (node instanceof IGridNode && isUsable((IGridNode) node)) {
+                            return (IGridNode) node;
+                        }
+                    }
+                } else {
+                    Object node = method.invoke(object, new Object[]{null});
+                    if (node instanceof IGridNode && isUsable((IGridNode) node)) {
+                        return (IGridNode) node;
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        return null;
+    }
+
+    private static boolean isUsable(IGridNode node) {
+        if (node == null) {
+            return false;
+        }
+        try {
+            return node.isActive() && node.getGrid() != null;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private static Object createGridConnection(IGridNode first, IGridNode second) {
+        try {
+            Class<?> connectionClass = Class.forName(GRID_CONNECTION_CLASS);
+            Constructor<?>[] constructors = connectionClass.getDeclaredConstructors();
+            for (boolean dense : new boolean[]{true, false}) {
+                for (Constructor<?> constructor : constructors) {
+                    Object[] arguments = buildArguments(constructor.getParameterTypes(), first, second, dense);
+                    if (arguments == null) {
+                        continue;
+                    }
+                    try {
+                        if (!constructor.isAccessible()) {
+                            constructor.setAccessible(true);
+                        }
+                        return constructor.newInstance(arguments);
+                    } catch (Throwable ignored) {
+                    }
+                }
+            }
+
+            for (Method method : first.getClass().getMethods()) {
+                if (!("connect".equals(method.getName()) || "connectTo".equals(method.getName()))
+                        || method.getParameterTypes().length != 1
+                        || !method.getParameterTypes()[0].isInstance(second)) {
+                    continue;
+                }
+                try {
+                    Object result = method.invoke(first, second);
+                    if (result != null) {
+                        return result;
+                    }
+                } catch (Throwable ignored) {
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    private static Object[] buildArguments(Class<?>[] parameterTypes, IGridNode first,
+                                            IGridNode second, boolean dense) {
+        Object[] arguments = new Object[parameterTypes.length];
+        int nodeIndex = 0;
+        for (int i = 0; i < parameterTypes.length; i++) {
+            Class<?> parameter = parameterTypes[i];
+            if (nodeIndex < 2 && isNodeParameter(parameter, first)) {
+                arguments[i] = nodeIndex++ == 0 ? first : second;
+            } else if (parameter == boolean.class || parameter == Boolean.class) {
+                arguments[i] = dense;
+            } else if (parameter == int.class || parameter == Integer.class) {
+                arguments[i] = ChannelSparkConfig.getChannelCapacity();
+            } else if (parameter == long.class || parameter == Long.class) {
+                arguments[i] = (long) ChannelSparkConfig.getChannelCapacity();
+            } else if (EnumSet.class.isAssignableFrom(parameter) || Set.class.isAssignableFrom(parameter)) {
+                Object flags = createDenseFlags();
+                if (flags == null) {
+                    return null;
+                }
+                arguments[i] = flags;
+            } else if (parameter.isEnum()) {
+                Object flag = findDenseFlag(parameter);
+                if (flag == null) {
+                    return null;
+                }
+                arguments[i] = flag;
+            } else {
+                return null;
+            }
+        }
+        return nodeIndex == 2 ? arguments : null;
+    }
+
+    private static boolean isNodeParameter(Class<?> parameter, IGridNode node) {
+        return parameter != Object.class
+                && (IGridNode.class.isAssignableFrom(parameter) || parameter.isInstance(node));
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static Object createDenseFlags() {
+        try {
+            Class<?> flagsClass = Class.forName("appeng.api.networking.GridFlags");
+            Object dense = Enum.valueOf((Class<? extends Enum>) flagsClass, "DENSE_CAPACITY");
+            return EnumSet.of((Enum) dense);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static Object findDenseFlag(Class<?> enumClass) {
+        try {
+            return Enum.valueOf((Class<? extends Enum>) enumClass, "DENSE_CAPACITY");
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static void destroyConnection(Object connection) {
+        if (connection == null) {
+            return;
+        }
+        for (String name : new String[]{"destroy", "disconnect", "close"}) {
+            try {
+                Method method = connection.getClass().getMethod(name);
+                if (!Modifier.isStatic(method.getModifiers()) && method.getParameterTypes().length == 0) {
+                    method.invoke(connection);
+                    return;
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+}
