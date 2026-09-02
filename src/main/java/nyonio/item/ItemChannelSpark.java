@@ -1,6 +1,5 @@
 package nyonio.item;
 
-import appeng.api.networking.IGridNode;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
@@ -32,10 +31,6 @@ public class ItemChannelSpark extends Item {
             return EnumActionResult.SUCCESS;
         }
 
-        IGridNode target = ChannelSparkNetwork.findGridNode(world, pos);
-        if (target == null) {
-            return EnumActionResult.PASS;
-        }
         return placeAt(world, player, hand, pos);
     }
 
@@ -46,10 +41,6 @@ public class ItemChannelSpark extends Item {
             return EnumActionResult.SUCCESS;
         }
 
-        IGridNode target = ChannelSparkNetwork.findGridNode(world, pos);
-        if (target == null) {
-            return EnumActionResult.PASS;
-        }
         return placeAt(world, player, hand, pos);
     }
 
@@ -62,9 +53,6 @@ public class ItemChannelSpark extends Item {
 
         RayTraceResult hit = player.rayTrace(5.0D, 1.0F);
         if (hit == null || hit.typeOfHit != RayTraceResult.Type.BLOCK) {
-            return new ActionResult<>(EnumActionResult.PASS, stack);
-        }
-        if (ChannelSparkNetwork.findGridNode(world, hit.getBlockPos()) == null) {
             return new ActionResult<>(EnumActionResult.PASS, stack);
         }
         EnumActionResult result = placeAt(world, player, hand, hit.getBlockPos());

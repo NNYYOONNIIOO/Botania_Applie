@@ -111,8 +111,14 @@ public final class ChannelSparkNetwork {
             return;
         }
 
-        if (!spark.hasTarget() || findGridNode(spark.world, spark.getTargetPos()) == null) {
+        if (!spark.hasTarget()) {
             clear(spark);
+            return;
+        }
+
+        IGridNode targetNode = findGridNode(spark.world, spark.getTargetPos());
+        if (!isUsable(targetNode)) {
+            removeInvalidLinks(spark);
             return;
         }
 
@@ -168,7 +174,8 @@ public final class ChannelSparkNetwork {
 
         IGridNode firstNode = findGridNode(first.world, first.getTargetPos());
         IGridNode secondNode = findGridNode(second.world, second.getTargetPos());
-        if (firstNode == null || secondNode == null || firstNode == secondNode) {
+        if (firstNode == null || secondNode == null || firstNode == secondNode
+                || !isUsable(firstNode) || !isUsable(secondNode)) {
             return;
         }
 
