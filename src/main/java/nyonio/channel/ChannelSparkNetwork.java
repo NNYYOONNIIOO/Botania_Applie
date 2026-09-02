@@ -5,7 +5,6 @@ import appeng.api.networking.IGridHost;
 import appeng.api.networking.IGridNode;
 import appeng.api.networking.IGridConnection;
 import appeng.api.networking.GridFlags;
-import appeng.api.exceptions.FailedConnectionException;
 import appeng.api.util.AEPartLocation;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
@@ -22,10 +21,12 @@ import vazkii.botania.common.network.PacketHandler;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -110,7 +111,7 @@ public final class ChannelSparkNetwork {
 
     private static boolean hasUsableEndpoint(EntityChannelSpark spark) {
         return spark != null && spark.hasTarget()
-                && isUsable(findGridNode(spark.world, spark.getTargetPos()));
+                && findBridgeNode(spark.world, spark.getTargetPos()) != null;
     }
 
     public static void showNetwork(EntityPlayer player, EntityChannelSpark source) {
@@ -218,8 +219,8 @@ public final class ChannelSparkNetwork {
             return null;
         }
 
-        IGridNode firstNode = findGridNode(first.world, first.getTargetPos());
-        IGridNode secondNode = findGridNode(second.world, second.getTargetPos());
+        IGridNode firstNode = findBridgeNode(first.world, first.getTargetPos());
+        IGridNode secondNode = findBridgeNode(second.world, second.getTargetPos());
         if (firstNode == null || secondNode == null || firstNode == secondNode) {
             return null;
         }
@@ -320,6 +321,112 @@ public final class ChannelSparkNetwork {
         } catch (Throwable ignored) {
         }
         return null;
+    }
+
+    /**
+     * Returns a node that can actually carry an AE2 path.  Machine/interface
+     * nodes are valid endpoints for devices, but AE2 deliberately gives them
+     * CANNOT_CARRY and they cannot be used as the two ends of a channel bridge.
+     * For cable buses, use the center/carrying node first and only fall back to
+     * a host node when no carrying node is exposed.
+     */
+    private static IGridNode findBridgeNode(World world, BlockPos pos) {
+        if (world == null || pos == null) {
+            return null;
+        }
+
+        // A machine such as an ME interface exposes a live node, but that
+        // node is marked CANNOT_CARRY by AE2. Walk its existing AE graph to
+        // find the cable-bus node that can actually carry the bridge channel.
+        IGridNode endpoint = findGridNode(world, pos);
+        IGridNode carrying = findCarryingNodeInNetwork(endpoint);
+        if (carrying != null) {
+            return carrying;
+        }
+
+        TileEntity tile = world.getTileEntity(pos);
+        if (tile == null) {
+            return null;
+        }
+
+        for (EnumFacing facing : EnumFacing.values()) {
+            try {
+                Method getPart = tile.getClass().getMethod("getPart", EnumFacing.class);
+                Object part = getPart.invoke(tile, facing);
+                endpoint = findGridNodeOnObject(part);
+                carrying = findCarryingNodeInNetwork(endpoint);
+                if (carrying != null) {
+                    return carrying;
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+
+        for (AEPartLocation location : AEPartLocation.values()) {
+            try {
+                Method getPart = tile.getClass().getMethod("getPart", AEPartLocation.class);
+                Object part = getPart.invoke(tile, location);
+                endpoint = findGridNodeOnObject(part);
+                carrying = findCarryingNodeInNetwork(endpoint);
+                if (carrying != null) {
+                    return carrying;
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        return null;
+    }
+
+    private static IGridNode findCarryingNodeInNetwork(IGridNode endpoint) {
+        if (!isUsable(endpoint)) {
+            return null;
+        }
+
+        ArrayDeque<IGridNode> queue = new ArrayDeque<>();
+        Set<IGridNode> visited = Collections.newSetFromMap(
+                new IdentityHashMap<IGridNode, Boolean>());
+        queue.add(endpoint);
+        visited.add(endpoint);
+
+        // A malformed or unusually large network must not make every spark
+        // tick scan without bounds. The first carrying node is normally the
+        // adjacent cable-bus node, so this limit is only a safety net.
+        int scanned = 0;
+        while (!queue.isEmpty() && scanned++ < 4096) {
+            IGridNode node = queue.removeFirst();
+            if (isCarryingNode(node)) {
+                return node;
+            }
+
+            try {
+                for (IGridConnection connection : node.getConnections()) {
+                    if (connection == null) {
+                        continue;
+                    }
+                    IGridNode other;
+                    try {
+                        other = connection.getOtherSide(node);
+                    } catch (Throwable ignored) {
+                        continue;
+                    }
+                    if (isUsable(other) && visited.add(other)) {
+                        queue.addLast(other);
+                    }
+                }
+            } catch (Throwable ignored) {
+                // A grid can be rebuilding while a spark is ticking.
+            }
+        }
+        return null;
+    }
+
+    private static boolean isCarryingNode(IGridNode node) {
+        try {
+            return node != null && node.isActive()
+                    && !node.hasFlag(GridFlags.CANNOT_CARRY);
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     private static IGridNode findGridNodeOnObject(Object object) {
