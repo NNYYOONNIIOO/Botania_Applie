@@ -27,6 +27,9 @@ public class ClientProxy extends CommonProxy {
     @Override
     public void preInit(FMLPreInitializationEvent event) {
         super.preInit(event);
+        // Entity renderers must be registered before RenderManager is initialized.
+        RenderingRegistry.registerEntityRenderingHandler(EntityChannelSpark.class,
+            RenderChannelSpark::new);
     }
     
     @Override
@@ -36,8 +39,6 @@ public class ClientProxy extends CommonProxy {
         MinecraftForge.EVENT_BUS.register(new FluixPoolHUDHandler());
         MinecraftForge.EVENT_BUS.register(new ManaTerminalHandler());
         ModelLoaderRegistry.registerLoader(new ManaPacketModel.Loader());
-        RenderingRegistry.registerEntityRenderingHandler(EntityChannelSpark.class,
-            RenderChannelSpark::new);
     }
     
     @Override
