@@ -145,7 +145,9 @@ public final class ChannelSparkNetwork {
 
         removeInvalidLinks(spark);
         int radius = ChannelSparkConfig.getTransferRadius();
-        AxisAlignedBB search = spark.getEntityBoundingBox().grow(radius);
+        AxisAlignedBB search = new AxisAlignedBB(
+                spark.posX - radius, spark.posY - radius, spark.posZ - radius,
+                spark.posX + radius, spark.posY + radius, spark.posZ + radius);
         List<EntityChannelSpark> nearby = spark.world.getEntitiesWithinAABB(EntityChannelSpark.class, search);
         for (EntityChannelSpark other : nearby) {
             if (other == spark || other.isDead || other.world != spark.world
@@ -155,9 +157,7 @@ public final class ChannelSparkNetwork {
             if (spark.getDistanceSq(other) > (double) radius * (double) radius) {
                 continue;
             }
-            if (spark.getUniqueID().compareTo(other.getUniqueID()) < 0) {
-                connect(spark, other);
-            }
+            connect(spark, other);
         }
     }
 
