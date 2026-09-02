@@ -148,7 +148,7 @@ public final class ChannelSparkNetwork {
         AxisAlignedBB search = spark.getEntityBoundingBox().grow(radius);
         List<EntityChannelSpark> nearby = spark.world.getEntitiesWithinAABB(EntityChannelSpark.class, search);
         for (EntityChannelSpark other : nearby) {
-            if (other == spark || other.isDead || !other.hasTarget() || other.world != spark.world
+            if (other == spark || other.isDead || other.world != spark.world
                     || !isPrimaryInBlock(other)) {
                 continue;
             }
@@ -179,7 +179,7 @@ public final class ChannelSparkNetwork {
         for (Link link : links) {
             EntityChannelSpark other = link.other;
             if (other == null || other.isDead || other.world != spark.world
-                    || !other.hasTarget() || spark.getDistanceSq(other) > maxDistance
+                    || spark.getDistanceSq(other) > maxDistance
                     || !isPrimaryInBlock(other)) {
                 unlink(spark, other, link.connection);
             } else if (link.connection != null
