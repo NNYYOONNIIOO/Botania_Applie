@@ -324,6 +324,58 @@ public final class ChannelSparkNetwork {
     }
 
     /**
+     * Resolves a node even when AE2 currently reports it as inactive. An
+     * interface can be inactive because it does not have a channel yet, while
+     * its cable-bus node is still the correct place to create the bridge.
+     */
+    private static IGridNode findAnyGridNode(World world, BlockPos pos) {
+        if (world == null || pos == null) {
+            return null;
+        }
+        TileEntity tile = world.getTileEntity(pos);
+        if (tile == null) {
+            return null;
+        }
+
+        if (tile instanceof IGridHost) {
+            IGridNode node = findAnyGridNodeOnHost((IGridHost) tile);
+            if (node != null) {
+                return node;
+            }
+        }
+
+        IGridNode node = findGridNodeOnObject(tile, false);
+        if (node != null) {
+            return node;
+        }
+
+        try {
+            Method getPart = tile.getClass().getMethod("getPart", EnumFacing.class);
+            for (EnumFacing facing : EnumFacing.values()) {
+                Object part = getPart.invoke(tile, facing);
+                node = findGridNodeOnObject(part, false);
+                if (node != null) {
+                    return node;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+
+        try {
+            Method getPart = tile.getClass().getMethod("getPart", AEPartLocation.class);
+            for (AEPartLocation location : AEPartLocation.SIDE_LOCATIONS) {
+                Object part = getPart.invoke(tile, location);
+                node = findGridNodeOnObject(part, false);
+                if (node != null) {
+                    return node;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    /**
      * Returns a node that can actually carry an AE2 path.  Machine/interface
      * nodes are valid endpoints for devices, but AE2 deliberately gives them
      * CANNOT_CARRY and they cannot be used as the two ends of a channel bridge.
@@ -339,6 +391,9 @@ public final class ChannelSparkNetwork {
         // node is marked CANNOT_CARRY by AE2. Walk its existing AE graph to
         // find the cable-bus node that can actually carry the bridge channel.
         IGridNode endpoint = findGridNode(world, pos);
+        if (endpoint == null) {
+            endpoint = findAnyGridNode(world, pos);
+        }
         IGridNode carrying = findCarryingNodeInNetwork(endpoint);
         if (carrying != null) {
             return carrying;
@@ -353,7 +408,7 @@ public final class ChannelSparkNetwork {
             try {
                 Method getPart = tile.getClass().getMethod("getPart", EnumFacing.class);
                 Object part = getPart.invoke(tile, facing);
-                endpoint = findGridNodeOnObject(part);
+                endpoint = findGridNodeOnObject(part, false);
                 carrying = findCarryingNodeInNetwork(endpoint);
                 if (carrying != null) {
                     return carrying;
@@ -366,7 +421,7 @@ public final class ChannelSparkNetwork {
             try {
                 Method getPart = tile.getClass().getMethod("getPart", AEPartLocation.class);
                 Object part = getPart.invoke(tile, location);
-                endpoint = findGridNodeOnObject(part);
+                endpoint = findGridNodeOnObject(part, false);
                 carrying = findCarryingNodeInNetwork(endpoint);
                 if (carrying != null) {
                     return carrying;
@@ -378,7 +433,7 @@ public final class ChannelSparkNetwork {
     }
 
     private static IGridNode findCarryingNodeInNetwork(IGridNode endpoint) {
-        if (!isUsable(endpoint)) {
+        if (endpoint == null) {
             return null;
         }
 
@@ -409,7 +464,7 @@ public final class ChannelSparkNetwork {
                     } catch (Throwable ignored) {
                         continue;
                     }
-                    if (isUsable(other) && visited.add(other)) {
+                    if (other != null && visited.add(other)) {
                         queue.addLast(other);
                     }
                 }
@@ -430,13 +485,19 @@ public final class ChannelSparkNetwork {
     }
 
     private static IGridNode findGridNodeOnObject(Object object) {
+        return findGridNodeOnObject(object, true);
+    }
+
+    private static IGridNode findGridNodeOnObject(Object object, boolean requireActive) {
         if (object == null) {
             return null;
         }
 
         if (object instanceof IGridHost) {
-            IGridNode hostNode = findGridNodeOnHost((IGridHost) object);
-            if (isUsable(hostNode)) {
+            IGridNode hostNode = requireActive
+                    ? findGridNodeOnHost((IGridHost) object)
+                    : findAnyGridNodeOnHost((IGridHost) object);
+            if (isAccepted(hostNode, requireActive)) {
                 return hostNode;
             }
         }
@@ -455,7 +516,7 @@ public final class ChannelSparkNetwork {
                 }
                 getNode.setAccessible(true);
                 Object node = getNode.invoke(proxy);
-                if (node instanceof IGridNode && isUsable((IGridNode) node)) {
+                if (node instanceof IGridNode && isAccepted((IGridNode) node, requireActive)) {
                     return (IGridNode) node;
                 }
             }
@@ -471,7 +532,7 @@ public final class ChannelSparkNetwork {
                 Class<?>[] parameterTypes = method.getParameterTypes();
                 if (parameterTypes.length == 0) {
                     Object node = method.invoke(object);
-                    if (node instanceof IGridNode && isUsable((IGridNode) node)) {
+                    if (node instanceof IGridNode && isAccepted((IGridNode) node, requireActive)) {
                         return (IGridNode) node;
                     }
                     continue;
@@ -484,15 +545,32 @@ public final class ChannelSparkNetwork {
                     Object[] values = parameter.getEnumConstants();
                     for (Object value : values) {
                         Object node = method.invoke(object, value);
-                        if (node instanceof IGridNode && isUsable((IGridNode) node)) {
+                        if (node instanceof IGridNode && isAccepted((IGridNode) node, requireActive)) {
                             return (IGridNode) node;
                         }
                     }
                 } else {
                     Object node = method.invoke(object, new Object[]{null});
-                    if (node instanceof IGridNode && isUsable((IGridNode) node)) {
+                    if (node instanceof IGridNode && isAccepted((IGridNode) node, requireActive)) {
                         return (IGridNode) node;
                     }
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        return null;
+    }
+
+    private static boolean isAccepted(IGridNode node, boolean requireActive) {
+        return node != null && (!requireActive || isUsable(node));
+    }
+
+    private static IGridNode findAnyGridNodeOnHost(IGridHost host) {
+        for (AEPartLocation location : AEPartLocation.values()) {
+            try {
+                IGridNode node = host.getGridNode(location);
+                if (node != null) {
+                    return node;
                 }
             } catch (Throwable ignored) {
             }
