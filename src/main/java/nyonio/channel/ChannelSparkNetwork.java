@@ -109,18 +109,21 @@ public final class ChannelSparkNetwork {
         if (player == null || source == null || source.world == null || source.world.isRemote) {
             return;
         }
-        for (EntityChannelSpark other : source.world.getEntitiesWithinAABB(EntityChannelSpark.class,
-                source.getEntityBoundingBox().grow(ChannelSparkConfig.getTransferRadius()))) {
-            if (other == source || other.isDead || !isPrimaryInBlock(other)
-                    || source.getDistanceSq(other) > (double) ChannelSparkConfig.getTransferRadius()
-                    * (double) ChannelSparkConfig.getTransferRadius()) {
-                continue;
-            }
-            if (source.getLinks().containsKey(other.getUniqueID())) {
-                PacketHandler.sendTo((net.minecraft.entity.player.EntityPlayerMP) player,
-                        new PacketBotaniaEffect(PacketBotaniaEffect.EffectType.SPARK_NET_INDICATOR,
-                                source.posX, source.posY, source.posZ,
-                                source.getEntityId(), other.getEntityId()));
+        Set<UUID> visited = new HashSet<>();
+        List<EntityChannelSpark> queue = new ArrayList<>();
+        visited.add(source.getUniqueID());
+        queue.add(source);
+
+        for (int index = 0; index < queue.size(); index++) {
+            EntityChannelSpark current = queue.get(index);
+            for (Link link : new ArrayList<>(current.getLinks().values())) {
+                EntityChannelSpark other = link.other;
+                if (other == null || other.isDead || !isPrimaryInBlock(other)
+                        || !visited.add(other.getUniqueID())) {
+                    continue;
+                }
+                vazkii.botania.common.entity.EntitySpark.particleBeam(player, current, other);
+                queue.add(other);
             }
         }
     }
@@ -292,10 +295,18 @@ public final class ChannelSparkNetwork {
         }
 
         try {
-            Method getProxy = object.getClass().getMethod("getProxy");
+            Method getProxy = findMethod(object.getClass(), "getProxy");
+            if (getProxy == null) {
+                throw new NoSuchMethodException("getProxy");
+            }
+            getProxy.setAccessible(true);
             Object proxy = getProxy.invoke(object);
             if (proxy != null) {
-                Method getNode = proxy.getClass().getMethod("getNode");
+                Method getNode = findMethod(proxy.getClass(), "getNode");
+                if (getNode == null) {
+                    throw new NoSuchMethodException("getNode");
+                }
+                getNode.setAccessible(true);
                 Object node = getNode.invoke(proxy);
                 if (node instanceof IGridNode && isUsable((IGridNode) node)) {
                     return (IGridNode) node;
@@ -305,11 +316,22 @@ public final class ChannelSparkNetwork {
         }
 
         for (Method method : object.getClass().getMethods()) {
-            if (!"getGridNode".equals(method.getName()) || method.getParameterTypes().length != 1) {
+            if (!"getGridNode".equals(method.getName())) {
                 continue;
             }
+            method.setAccessible(true);
             Class<?> parameter = method.getParameterTypes()[0];
             try {
+                if (method.getParameterTypes().length == 0) {
+                    Object node = method.invoke(object);
+                    if (node instanceof IGridNode && isUsable((IGridNode) node)) {
+                        return (IGridNode) node;
+                    }
+                    continue;
+                }
+                if (method.getParameterTypes().length != 1) {
+                    continue;
+                }
                 if (parameter.isEnum()) {
                     Object[] values = parameter.getEnumConstants();
                     for (Object value : values) {
@@ -325,6 +347,18 @@ public final class ChannelSparkNetwork {
                     }
                 }
             } catch (Throwable ignored) {
+            }
+        }
+        return null;
+    }
+
+    private static Method findMethod(Class<?> type, String name, Class<?>... parameterTypes) {
+        Class<?> current = type;
+        while (current != null) {
+            try {
+                return current.getDeclaredMethod(name, parameterTypes);
+            } catch (NoSuchMethodException ignored) {
+                current = current.getSuperclass();
             }
         }
         return null;

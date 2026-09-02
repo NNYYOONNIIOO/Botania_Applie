@@ -142,8 +142,8 @@ public class EntityChannelSpark extends Entity {
         }
 
         if (player.isSneaking()) {
-            setDead();
             entityDropItem(new ItemStack(nyonio.BotaniaApplie.channelSpark), 0.0F);
+            setDead();
         } else {
             ChannelSparkNetwork.showNetwork(player, this);
         }
