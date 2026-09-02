@@ -107,6 +107,7 @@ public class BotaniaApplie implements ILateMixinLoader
     public void preInit(FMLPreInitializationEvent event)
     {
         logger = event.getModLog();
+        proxy.preInit(event);
 
         network = NetworkRegistry.INSTANCE.newSimpleChannel(MODID);
         network.registerMessage(CPacketManaContainerAction.Handler.class, CPacketManaContainerAction.class, 0, Side.SERVER);
