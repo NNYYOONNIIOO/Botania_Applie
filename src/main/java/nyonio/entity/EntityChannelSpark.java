@@ -5,7 +5,6 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.EnumHand;
-import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import nyonio.channel.ChannelSparkNetwork;
@@ -96,12 +95,7 @@ public class EntityChannelSpark extends Entity {
 
     @Override
     public boolean canBeCollidedWith() {
-        return true;
-    }
-
-    @Override
-    public AxisAlignedBB getCollisionBoundingBox() {
-        return getEntityBoundingBox();
+        return false;
     }
 
     @Override

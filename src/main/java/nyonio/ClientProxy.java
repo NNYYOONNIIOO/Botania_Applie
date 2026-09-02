@@ -2,7 +2,12 @@ package nyonio;
 
 import net.minecraft.client.renderer.block.model.ModelResourceLocation;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.entity.RenderSnowball;
+import net.minecraft.client.renderer.entity.Render;
+import net.minecraft.client.renderer.entity.RenderManager;
+import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.texture.TextureMap;
+import net.minecraft.client.renderer.block.model.ItemCameraTransforms;
+import net.minecraft.client.renderer.RenderItem;
 import net.minecraft.item.Item;
 import net.minecraftforge.client.event.ModelRegistryEvent;
 import net.minecraftforge.client.model.ModelLoader;
@@ -20,6 +25,7 @@ import nyonio.client.model.ManaPacketModel;
 import nyonio.entity.EntityChannelSpark;
 import nyonio.client.render.RenderTileFluixManaPool;
 import nyonio.tile.TileFluixManaPool;
+import vazkii.botania.common.item.ModItems;
 import vazkii.botania.api.state.enums.PoolVariant;
 
 @SideOnly(Side.CLIENT)
@@ -38,7 +44,7 @@ public class ClientProxy extends CommonProxy {
         MinecraftForge.EVENT_BUS.register(new ManaTerminalHandler());
         ModelLoaderRegistry.registerLoader(new ManaPacketModel.Loader());
         RenderingRegistry.registerEntityRenderingHandler(EntityChannelSpark.class,
-            manager -> new RenderSnowball<>(manager, BotaniaApplie.channelSpark, Minecraft.getMinecraft().getRenderItem()));
+            ChannelSparkRender::new);
     }
     
     @Override
@@ -89,5 +95,34 @@ public class ClientProxy extends CommonProxy {
     private void registerItemModel(Item item, int meta, String name) {
         ModelLoader.setCustomModelResourceLocation(item, meta, 
             new ModelResourceLocation(BotaniaApplie.MODID + ":" + name, "inventory"));
+    }
+}
+
+@SideOnly(Side.CLIENT)
+final class ChannelSparkRender extends Render<EntityChannelSpark> {
+    private final RenderItem itemRenderer;
+
+    ChannelSparkRender(RenderManager renderManager) {
+        super(renderManager);
+        this.itemRenderer = Minecraft.getMinecraft().getRenderItem();
+        this.shadowSize = 0.0F;
+    }
+
+    @Override
+    public void doRender(EntityChannelSpark entity, double x, double y, double z,
+                         float entityYaw, float partialTicks) {
+        GlStateManager.pushMatrix();
+        GlStateManager.translate((float) x, (float) y, (float) z);
+        GlStateManager.enableRescaleNormal();
+        GlStateManager.scale(0.5F, 0.5F, 0.5F);
+        itemRenderer.renderItem(new net.minecraft.item.ItemStack(ModItems.spark),
+                ItemCameraTransforms.TransformType.GROUND);
+        GlStateManager.disableRescaleNormal();
+        GlStateManager.popMatrix();
+    }
+
+    @Override
+    protected net.minecraft.util.ResourceLocation getEntityTexture(EntityChannelSpark entity) {
+        return TextureMap.LOCATION_BLOCKS_TEXTURE;
     }
 }
