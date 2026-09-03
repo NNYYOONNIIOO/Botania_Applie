@@ -128,12 +128,15 @@ public final class ChannelSparkNetwork {
     }
 
     /** Lightweight IGridProxyable host used by an AE2-style outer proxy. */
+    /** Lightweight IGridProxyable host used by an AE2-style outer proxy. */
     private static final class ProxyHost implements IGridProxyable {
         private final IGridNode anchor;
+        private final DimensionalCoord location;
         private AENetworkProxy proxy;
 
-        private ProxyHost(IGridNode anchor) {
+        private ProxyHost(IGridNode anchor, DimensionalCoord location) {
             this.anchor = anchor;
+            this.location = location;
         }
 
         private void setProxy(AENetworkProxy proxy) {
@@ -147,17 +150,12 @@ public final class ChannelSparkNetwork {
 
         @Override
         public DimensionalCoord getLocation() {
-            try {
-                return anchor == null || anchor.getGridBlock() == null
-                        ? null : anchor.getGridBlock().getLocation();
-            } catch (Throwable ignored) {
-                return null;
-            }
+            return location;
         }
 
         @Override
         public void gridChanged() {
-            // The proxy node is ephemeral and is refreshed by the bridge tick.
+            // The proxy is ephemeral; its parent spark rebuilds it as needed.
         }
 
         @Override
@@ -166,9 +164,9 @@ public final class ChannelSparkNetwork {
         }
 
         @Override
-       public void securityBreak() {
-           // There is no physical block to break for a channel spark proxy.
-       }
+        public void securityBreak() {
+            // There is no physical block to break for a channel spark proxy.
+        }
 
         @Override
         public AECableType getCableConnectionType(AEPartLocation direction) {
@@ -180,21 +178,26 @@ public final class ChannelSparkNetwork {
      * Mirrors PartP2PTunnelME.outerProxy. The proxy node is attached to one
      * real AE endpoint, while the two proxy nodes form the logical P2P link.
      */
+    /**
+     * Mirrors PartP2PTunnelME.outerProxy. This node is a separate AE2
+     * external-facing node; it is never the actual cable/controller endpoint.
+     */
     private static final class BridgeProxy {
         private final AENetworkProxy proxy;
-        private final List<IGridConnection> attachments = new ArrayList<>();
+        private final List<IGridConnection> fallbackAttachments = new ArrayList<>();
 
-        private BridgeProxy(BridgeEndpoint endpoint) {
-            ProxyHost host = new ProxyHost(endpoint.node);
+        private BridgeProxy(BridgeEndpoint endpoint, World world,
+                            BlockPos targetPos, EntityChannelSpark spark) {
+            EnumFacing face = getProxyAttachmentFace(endpoint, spark);
+            BlockPos proxyPos = face == null ? targetPos : targetPos.offset(face);
+            DimensionalCoord location = new DimensionalCoord(world, proxyPos);
+            ProxyHost host = new ProxyHost(endpoint.node, location);
             this.proxy = new AENetworkProxy(
-                    host, "botania_applie_channel_spark", ItemStack.EMPTY, false);
+                    host, "botania_applie_channel_spark", ItemStack.EMPTY, true);
             host.setProxy(this.proxy);
             this.proxy.setFlags(GridFlags.DENSE_CAPACITY, GridFlags.CANNOT_CARRY_COMPRESSED);
-            if (endpoint.direction != null
-                    && endpoint.direction != AEPartLocation.INTERNAL
-                    && endpoint.direction.getFacing() != null) {
-                this.proxy.setValidSides(EnumSet.of(
-                        endpoint.direction.getFacing().getOpposite()));
+            if (face != null) {
+                this.proxy.setValidSides(EnumSet.of(face.getOpposite()));
             }
             this.proxy.onReady();
         }
@@ -204,9 +207,21 @@ public final class ChannelSparkNetwork {
         }
 
         private void destroy() {
-            destroyConnections(attachments);
+            destroyConnections(fallbackAttachments);
             proxy.invalidate();
         }
+    }
+
+    private static EnumFacing getProxyAttachmentFace(BridgeEndpoint endpoint,
+                                                       EntityChannelSpark spark) {
+        if (endpoint != null && endpoint.direction != null
+                && endpoint.direction != AEPartLocation.INTERNAL
+                && endpoint.direction.getFacing() != null) {
+            return endpoint.direction.getFacing();
+        }
+        AEPartLocation direction = getCableAttachmentDirection(spark);
+        return direction == null || direction == AEPartLocation.INTERNAL
+                ? EnumFacing.UP : direction.getFacing();
     }
 
     private static final class BridgeBuild {
@@ -668,8 +683,10 @@ if (network == null || network.isEmpty()) {
         BridgeProxy firstProxy = null;
         BridgeProxy secondProxy = null;
         try {
-            firstProxy = new BridgeProxy(firstEndpoint);
-            secondProxy = new BridgeProxy(secondEndpoint);
+            firstProxy = new BridgeProxy(firstEndpoint, first.world,
+                    first.getTargetPos(), first);
+            secondProxy = new BridgeProxy(secondEndpoint, second.world,
+                    second.getTargetPos(), second);
             if (!attachBridgeProxy(firstProxy, firstEndpoint)
                     || !attachBridgeProxy(secondProxy, secondEndpoint)) {
                 if (firstProxy != null) {
@@ -681,8 +698,8 @@ if (network == null || network.isEmpty()) {
                 return build;
             }
 
-            // This follows PartP2PTunnelME: connect the two dense outer
-            // proxies, not the real cable/controller nodes directly.
+            // The actual P2P connection is between the two external proxy
+            // nodes, exactly like AE2's PartP2PTunnelME.outerProxy nodes.
             IGridConnection connection = createP2PGridConnection(
                     firstProxy.node(), secondProxy.node());
             if (connection == null) {
@@ -708,15 +725,22 @@ if (network == null || network.isEmpty()) {
     }
 
     private static boolean attachBridgeProxy(BridgeProxy proxy, BridgeEndpoint endpoint) {
-        if (proxy == null || endpoint == null || endpoint.node == null) {
+        if (proxy == null || endpoint == null || endpoint.node == null
+                || proxy.node() == null) {
             return false;
         }
+        if (safeGrid(proxy.node()) == safeGrid(endpoint.node)) {
+            return true;
+        }
         try {
+            // Machines that do not expose the selected face can still be used
+            // as an endpoint. This is only a fallback; normal cable/controller
+            // endpoints attach through the proxy's world-facing side above.
             IGridConnection attachment = GridConnection.create(
                     endpoint.node, proxy.node(), endpoint.direction);
-            proxy.attachments.add(attachment);
+            proxy.fallbackAttachments.add(attachment);
             repathAfterConnection(endpoint.node, proxy.node());
-            return true;
+            return safeGrid(proxy.node()) == safeGrid(endpoint.node);
         } catch (Throwable error) {
             logConnectionFailure("AE2 channel spark endpoint attachment",
                     endpoint.node, proxy.node(), error);
