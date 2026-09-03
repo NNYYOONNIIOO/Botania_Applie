@@ -484,17 +484,6 @@ public final class ChannelSparkNetwork {
         } catch (Throwable ignored) {
         }
 
-        try {
-            Method getPart = tile.getClass().getMethod("getPart", AEPartLocation.class);
-            for (AEPartLocation location : AEPartLocation.SIDE_LOCATIONS) {
-                Object part = getPart.invoke(tile, location);
-                node = findGridNodeOnObject(part);
-                if (isUsable(node)) {
-                    return node;
-                }
-            }
-        } catch (Throwable ignored) {
-        }
         return null;
     }
 
@@ -561,47 +550,36 @@ public final class ChannelSparkNetwork {
         if (world == null || pos == null) {
             return null;
         }
-
-        // A machine such as an ME interface exposes a live node, but that
-        // node is marked CANNOT_CARRY by AE2. Walk its existing AE graph to
-        // find the cable-bus node that can actually carry the bridge channel.
-        IGridNode endpoint = findGridNode(world, pos);
-        if (endpoint == null) {
-            endpoint = findAnyGridNode(world, pos);
-        }
-        IGridNode carrying = findCarryingNodeInNetwork(endpoint);
-        if (carrying != null) {
-            return carrying;
-        }
-
         TileEntity tile = world.getTileEntity(pos);
         if (tile == null) {
             return null;
         }
 
-        for (EnumFacing facing : EnumFacing.values()) {
-            try {
-                Method getPart = tile.getClass().getMethod("getPart", EnumFacing.class);
-                Object part = getPart.invoke(tile, facing);
-                endpoint = findGridNodeOnObject(part, false);
-                carrying = findCarryingNodeInNetwork(endpoint);
-                if (carrying != null) {
-                    return carrying;
-                }
-            } catch (Throwable ignored) {
-            }
+        // Never select an arbitrary carrying node from the complete AE2 grid.
+        // A direct wireless connection has no cable side/facing; attaching it
+        // to an unrelated dense cable can make AE2 pass a null facing into its
+        // collision-box code. The target block's internal node is the stable
+        // bridge point for a cable bus and preserves the player's placement.
+        IGridNode endpoint = tile instanceof IGridHost
+                ? findCarryingGridNodeOnHost((IGridHost) tile)
+                : findGridNodeOnObject(tile, false);
+        if (isCarryingNode(endpoint)) {
+            return endpoint;
         }
 
-        for (AEPartLocation location : AEPartLocation.values()) {
-            try {
-                Method getPart = tile.getClass().getMethod("getPart", AEPartLocation.class);
-                Object part = getPart.invoke(tile, location);
-                endpoint = findGridNodeOnObject(part, false);
-                carrying = findCarryingNodeInNetwork(endpoint);
-                if (carrying != null) {
-                    return carrying;
-                }
-            } catch (Throwable ignored) {
+        // If the clicked block is a machine/interface node that cannot carry
+        // a path itself, accept only a directly adjacent cable bus. This keeps
+        // the bridge local and avoids changing an unrelated part of the grid.
+        for (EnumFacing facing : EnumFacing.values()) {
+            TileEntity adjacent = world.getTileEntity(pos.offset(facing));
+            if (adjacent == null) {
+                continue;
+            }
+            endpoint = adjacent instanceof IGridHost
+                    ? findCarryingGridNodeOnHost((IGridHost) adjacent)
+                    : findGridNodeOnObject(adjacent, false);
+            if (isCarryingNode(endpoint)) {
+                return endpoint;
             }
         }
         return null;
@@ -826,7 +804,17 @@ public final class ChannelSparkNetwork {
     }
 
     private static IGridNode findAnyGridNodeOnHost(IGridHost host) {
+        try {
+            IGridNode internal = host.getGridNode(AEPartLocation.INTERNAL);
+            if (internal != null) {
+                return internal;
+            }
+        } catch (Throwable ignored) {
+        }
         for (AEPartLocation location : AEPartLocation.values()) {
+            if (location == AEPartLocation.INTERNAL) {
+                continue;
+            }
             try {
                 IGridNode node = host.getGridNode(location);
                 if (node != null) {
@@ -839,10 +827,43 @@ public final class ChannelSparkNetwork {
     }
 
     private static IGridNode findGridNodeOnHost(IGridHost host) {
+        try {
+            IGridNode internal = host.getGridNode(AEPartLocation.INTERNAL);
+            if (isUsable(internal)) {
+                return internal;
+            }
+        } catch (Throwable ignored) {
+        }
         for (AEPartLocation location : AEPartLocation.values()) {
+            if (location == AEPartLocation.INTERNAL) {
+                continue;
+            }
             try {
                 IGridNode node = host.getGridNode(location);
                 if (isUsable(node)) {
+                    return node;
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        return null;
+    }
+
+    private static IGridNode findCarryingGridNodeOnHost(IGridHost host) {
+        if (host == null) {
+            return null;
+        }
+        try {
+            IGridNode internal = host.getGridNode(AEPartLocation.INTERNAL);
+            if (isCarryingNode(internal)) {
+                return internal;
+            }
+        } catch (Throwable ignored) {
+        }
+        for (AEPartLocation location : AEPartLocation.SIDE_LOCATIONS) {
+            try {
+                IGridNode node = host.getGridNode(location);
+                if (isCarryingNode(node)) {
                     return node;
                 }
             } catch (Throwable ignored) {
