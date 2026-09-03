@@ -48,6 +48,9 @@ public final class ChannelSparkNetwork {
     private static final String GRID_CONNECTION_CLASS = "appeng.me.GridConnection";
     private static final Map<IGridConnection, Integer> CHANNEL_CAPACITIES =
             Collections.synchronizedMap(new WeakHashMap<IGridConnection, Integer>());
+    private static final Set<IGridConnection> WIRELESS_CONNECTIONS =
+            Collections.synchronizedSet(Collections.newSetFromMap(
+                    new WeakHashMap<IGridConnection, Boolean>()));
     private static final Map<BridgeKey, BridgeRecord> AE_BRIDGES = new HashMap<>();
     private static final ThreadLocal<Integer> PENDING_CHANNEL_CAPACITY = new ThreadLocal<>();
 
@@ -59,9 +62,15 @@ public final class ChannelSparkNetwork {
         return capacity == null ? PENDING_CHANNEL_CAPACITY.get() : capacity;
     }
 
+    public static boolean isWirelessConnection(IGridConnection connection) {
+        return connection != null && WIRELESS_CONNECTIONS.contains(connection);
+    }
+
     private static void registerConnection(Object connection) {
         if (connection instanceof IGridConnection) {
-            CHANNEL_CAPACITIES.put((IGridConnection) connection, ChannelSparkConfig.getChannelCapacity());
+            IGridConnection gridConnection = (IGridConnection) connection;
+            CHANNEL_CAPACITIES.put(gridConnection, ChannelSparkConfig.getChannelCapacity());
+            WIRELESS_CONNECTIONS.add(gridConnection);
         }
     }
 
@@ -1181,6 +1190,9 @@ public final class ChannelSparkNetwork {
             }
         }
         if (destroyed) {
+            if (connection instanceof IGridConnection) {
+                WIRELESS_CONNECTIONS.remove((IGridConnection) connection);
+            }
             repathAfterConnection(first, second);
         }
     }

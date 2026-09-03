@@ -4,11 +4,13 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.util.EnumActionResult;
 import net.minecraft.util.EnumHand;
 import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.RayTraceResult;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 import nyonio.channel.ChannelSparkNetwork;
 import vazkii.botania.common.item.ItemTwigWand;
@@ -144,8 +146,19 @@ public class EntityChannelSpark extends Entity {
     }
 
     @Override
+    public float getCollisionBorderSize() {
+        return 0.2F;
+    }
+
+    @Override
     public boolean canBePushed() {
         return false;
+    }
+
+    @Override
+    public EnumActionResult applyPlayerInteraction(EntityPlayer player, Vec3d hitVector, EnumHand hand) {
+        return processInitialInteract(player, hand)
+                ? EnumActionResult.SUCCESS : EnumActionResult.PASS;
     }
 
     @Override
