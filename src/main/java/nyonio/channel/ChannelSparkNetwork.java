@@ -407,10 +407,11 @@ public final class ChannelSparkNetwork {
         } catch (Throwable ignored) {
         }
 
-        // A spark bridge is not a physical cable side. Keep the connection
-        // internal so AE2 still counts its channels while the dense-cable
-        // geometry mixin prevents INTERNAL from being treated as a direction.
-        return createGridConnection(firstNode, secondNode, AEPartLocation.INTERNAL);
+        // A cable endpoint needs a real side so AE2 exposes the bridge's used
+        // channels to smart/dense cable rendering and TOP. Non-cable endpoints
+        // keep the internal direction because they have no physical side.
+        return createGridConnection(firstNode, secondNode,
+                determineBridgeDirection(first, firstNode, second, secondNode));
     }
 
     private static AEPartLocation determineBridgeDirection(EntityChannelSpark first,

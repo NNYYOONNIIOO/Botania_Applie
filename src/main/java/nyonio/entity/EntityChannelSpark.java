@@ -66,7 +66,10 @@ public class EntityChannelSpark extends Entity {
 
     @Override
     protected void entityInit() {
-        setSize(0.1F, 0.5F);
+        // Use the same practical hit area as Botania's spark. The entity has
+        // no physical collision box, but a tiny 0.1-wide selection box makes
+        // the forest wand ray trace miss it almost every time.
+        setSize(0.25F, 0.25F);
         placementOrder = nextPlacementOrder();
     }
 
