@@ -137,10 +137,9 @@ public class EntityChannelSpark extends Entity {
 
     @Override
     public AxisAlignedBB getCollisionBoundingBox() {
-        // Keep a selectable hit box like Botania's spark. The entity is still
-        // not pushable, so this does not turn the visual spark into a solid
-        // obstacle.
-        return getEntityBoundingBox();
+        // Selection uses getEntityBoundingBox(); the collision box itself is
+        // empty so the spark never becomes a physical obstacle.
+        return null;
     }
 
     @Override
