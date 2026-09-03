@@ -549,8 +549,9 @@ if (network == null || network.isEmpty()) {
             return Collections.emptyList();
         }
 
-        // Snapshot the grids before the first connection merges them. The
-        // remaining face pairs must still be created in the requested order.
+        // Snapshot the grids before the first connection merges them. There
+        // is intentionally only one pair: a channel spark is a P2P link,
+        // not a six-sided cable connection.
         Map<IGridNode, Object> initialGrids = new IdentityHashMap<>();
         for (BridgeEndpoint endpoint : firstEndpoints) {
             initialGrids.put(endpoint.node, safeGrid(endpoint.node));
@@ -618,48 +619,56 @@ if (network == null || network.isEmpty()) {
             return pairs;
         }
 
-        // Both inputs are already ordered +X,+Y,+Z,-X,-Y,-Z. Matching equal
-        // faces gives deterministic controller channel consumption.
-        if (first.size() == 1 && second.size() > 1) {
-            for (BridgeEndpoint endpoint : second) {
-                pairs.add(new BridgeEndpoint[]{first.get(0), endpoint});
-            }
+        // A controller exposes six logical faces, but one remote spark must
+        // consume exactly one of them. Select the first free face in the
+        // deterministic +X,+Y,+Z,-X,-Y,-Z order. This preserves independent
+        // P2P-style paths for multiple remote networks instead of joining
+        // every face of every network like a dense cable.
+        BridgeEndpoint firstEndpoint = selectP2PEndpoint(first);
+        BridgeEndpoint secondEndpoint = selectP2PEndpoint(second);
+        if (firstEndpoint == null || secondEndpoint == null) {
             return pairs;
         }
-        if (second.size() == 1 && first.size() > 1) {
-            for (BridgeEndpoint endpoint : first) {
-                pairs.add(new BridgeEndpoint[]{endpoint, second.get(0)});
-            }
-            return pairs;
-        }
-
-        boolean[] usedSecond = new boolean[second.size()];
-        for (int index = 0; index < first.size(); index++) {
-            BridgeEndpoint firstEndpoint = first.get(index);
-            int selected = -1;
-            for (int other = 0; other < second.size(); other++) {
-                if (!usedSecond[other]
-                        && second.get(other).direction == firstEndpoint.direction) {
-                    selected = other;
-                    break;
-                }
-            }
-            if (selected < 0) {
-                selected = index < second.size() ? index : index % second.size();
-            }
-            usedSecond[selected] = true;
-            pairs.add(new BridgeEndpoint[]{firstEndpoint, second.get(selected)});
-        }
-
-        if (second.size() > first.size()) {
-            BridgeEndpoint fallback = first.get(first.size() - 1);
-            for (int index = 0; index < second.size(); index++) {
-                if (!usedSecond[index]) {
-                    pairs.add(new BridgeEndpoint[]{fallback, second.get(index)});
-                }
-            }
-        }
+        pairs.add(new BridgeEndpoint[]{firstEndpoint, secondEndpoint});
         return pairs;
+    }
+
+    private static BridgeEndpoint selectP2PEndpoint(List<BridgeEndpoint> endpoints) {
+        BridgeEndpoint fallback = null;
+        for (BridgeEndpoint endpoint : endpoints) {
+            if (!endpoint.controllerFace) {
+                if (fallback == null) {
+                    fallback = endpoint;
+                }
+                continue;
+            }
+            if (fallback == null) {
+                fallback = endpoint;
+            }
+            if (!isBridgeDirectionInUse(endpoint.node, endpoint.direction)) {
+                return endpoint;
+            }
+        }
+        return fallback != null && !fallback.controllerFace
+                ? fallback : (fallback != null
+                && !isBridgeDirectionInUse(fallback.node, fallback.direction)
+                ? fallback : null);
+    }
+
+    private static boolean isBridgeDirectionInUse(IGridNode node, AEPartLocation direction) {
+        if (node == null || direction == null) {
+            return true;
+        }
+        try {
+            for (IGridConnection connection : node.getConnections()) {
+                if (connection != null && direction == connection.getDirection(node)) {
+                    return true;
+                }
+            }
+        } catch (Throwable ignored) {
+            return true;
+        }
+        return false;
     }
 
     private static Object safeGrid(IGridNode node) {
