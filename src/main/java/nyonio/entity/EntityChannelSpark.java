@@ -43,6 +43,10 @@ public class EntityChannelSpark extends Entity {
         setPosition(x, y, z);
     }
 
+    public boolean isMainChannelSpark() {
+        return false;
+    }
+
     public boolean hasTarget() {
         return targetPos != null;
     }
@@ -128,7 +132,9 @@ public class EntityChannelSpark extends Entity {
 
     @Override
     public ItemStack getPickedResult(net.minecraft.util.math.RayTraceResult target) {
-        return new ItemStack(nyonio.BotaniaApplie.channelSpark);
+return new ItemStack(isMainChannelSpark()
+                ? nyonio.BotaniaApplie.mainChannelSpark
+                : nyonio.BotaniaApplie.channelSpark);
     }
 
     @Override

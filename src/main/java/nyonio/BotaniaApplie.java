@@ -32,8 +32,10 @@ import nyonio.item.ItemManaCard;
 import nyonio.item.ItemManaPacket;
 import nyonio.item.ItemManaStorageCell;
 import nyonio.item.ItemManaStorageComponent;
-import nyonio.item.ItemChannelSpark;
-import nyonio.entity.EntityChannelSpark;
+import nyonio.item.ItemChannelSpark;import nyonio.item.ItemMainChannelSpark;
+
+import nyonio.entity.EntityChannelSpark;import nyonio.entity.EntityMainChannelSpark;
+
 import nyonio.tile.TileFluixManaPool;
 import nyonio.terminal_interaction_integration.api.ResourceRegistrationEvent;
 import nyonio.terminal_interaction_integration.api.UpgradeModuleRegistration;
@@ -98,6 +100,7 @@ public class BotaniaApplie implements ILateMixinLoader
 
     public static Item manaPacket;
     public static Item channelSpark;
+    public static Item mainChannelSpark;
 
     public static Item manaCardBasic;
     public static Item manaCardAdvanced;
@@ -156,6 +159,11 @@ public class BotaniaApplie implements ILateMixinLoader
                 .setCreativeTab(BotaniaApplieTab.INSTANCE);
         EntityRegistry.registerModEntity(new ResourceLocation(MODID, "channel_spark"),
                 EntityChannelSpark.class, "channel_spark", 1, this, 64, 1, true);
+        mainChannelSpark = new ItemMainChannelSpark().setRegistryName(MODID, "main_channel_spark")
+                .setUnlocalizedName("botania_applie.main_channel_spark")
+                .setCreativeTab(BotaniaApplieTab.INSTANCE);
+        EntityRegistry.registerModEntity(new ResourceLocation(MODID, "main_channel_spark"),
+                EntityMainChannelSpark.class, "main_channel_spark", 2, this, 64, 1, true);
 
         manaCardBasic = new ItemManaCard(40).setRegistryName(MODID, "mana_card_basic").setUnlocalizedName("botania_applie.mana_card_basic").setCreativeTab(BotaniaApplieTab.INSTANCE);
         manaCardAdvanced = new ItemManaCard(200).setRegistryName(MODID, "mana_card_advanced").setUnlocalizedName("botania_applie.mana_card_advanced").setCreativeTab(BotaniaApplieTab.INSTANCE);
@@ -223,6 +231,7 @@ public class BotaniaApplie implements ILateMixinLoader
         }
         registry.register(manaPacket);
         registry.register(channelSpark);
+        registry.register(mainChannelSpark);
         registry.register(manaCardBasic);
         registry.register(manaCardAdvanced);
         registry.register(fluixPoolCard);

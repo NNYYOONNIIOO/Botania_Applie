@@ -293,28 +293,31 @@ public final class ChannelSparkNetwork {
     }
 
     private static void reconcileAeBridges(EntityChannelSpark source) {
-        List<EntityChannelSpark> network = collectLogicalNetwork(source);
-        List<EntityChannelSpark> endpointSparks = new ArrayList<>();
-        for (EntityChannelSpark spark : network) {
-            if (hasUsableEndpoint(spark)) {
-                endpointSparks.add(spark);
+List<EntityChannelSpark> network = collectLogicalNetwork(source);
+        EntityChannelSpark main = null;
+        for (EntityChannelSpark candidate : network) {
+            if (candidate != null && candidate.isMainChannelSpark()
+                    && hasControllerEndpoint(candidate)
+                    && (main == null || isEarlier(candidate, main))) {
+                main = candidate;
             }
         }
-        if (endpointSparks.size() < 2) {
+        if (main == null) {
+            removeStaleNonSourceBridges(network, null);
             return;
         }
 
-        // Use one stable source for the whole AE bridge. If a controller is
-        // present, its face nodes are the channel source regardless of the
-        // order in which the other sparks were discovered. This prevents a
-        // network such as interface -> interface -> controller from becoming
-        // a chain whose channel allocation depends on entity iteration order.
-        EntityChannelSpark anchor = selectChannelSource(endpointSparks);
-        removeStaleNonSourceBridges(network, anchor);
-        for (int index = 1; index < endpointSparks.size(); index++) {
-            EntityChannelSpark other = endpointSparks.get(index);
-            BridgeKey key = new BridgeKey(anchor.getUniqueID(), other.getUniqueID());
-            int expectedConnections = expectedBridgeConnectionCount(anchor, other);
+        List<EntityChannelSpark> endpointSparks = new ArrayList<>();
+        for (EntityChannelSpark spark : network) {
+            if (spark != null && spark != main && !spark.isMainChannelSpark()
+                    && hasUsableEndpoint(spark)) {
+                endpointSparks.add(spark);
+            }
+        }
+        removeStaleNonSourceBridges(network, main);
+        for (EntityChannelSpark other : endpointSparks) {
+            BridgeKey key = new BridgeKey(main.getUniqueID(), other.getUniqueID());
+            int expectedConnections = expectedBridgeConnectionCount(main, other);
             BridgeRecord existing = AE_BRIDGES.get(key);
             if (existing != null) {
                 if (existing.expectedConnections >= expectedConnections
@@ -324,11 +327,9 @@ public final class ChannelSparkNetwork {
                 destroyConnections(existing.connections);
                 AE_BRIDGES.remove(key);
             }
-
-            List<IGridConnection> connections = createGridConnectionsIfPossible(anchor, other);
+            List<IGridConnection> connections = createGridConnectionsIfPossible(main, other);
             if (!connections.isEmpty()) {
-                AE_BRIDGES.put(key, new BridgeRecord(anchor, other, connections,
-                        expectedConnections));
+                AE_BRIDGES.put(key, new BridgeRecord(main, other, connections, expectedConnections));
             }
         }
     }
@@ -362,17 +363,9 @@ public final class ChannelSparkNetwork {
     }
 
     private static boolean hasControllerEndpoint(EntityChannelSpark spark) {
-        if (spark == null || spark.isDead || spark.world == null
-                || spark.getTargetPos() == null) {
-            return false;
-        }
-        for (BridgeEndpoint endpoint : findBridgeEndpoints(
-                spark.world, spark.getTargetPos())) {
-            if (endpoint.controllerFace) {
-                return true;
-            }
-        }
-        return false;
+return spark != null && !spark.isDead && spark.world != null
+                && spark.getTargetPos() != null
+                && spark.world.getTileEntity(spark.getTargetPos()) instanceof TileController;
     }
 
     /**
@@ -382,25 +375,20 @@ public final class ChannelSparkNetwork {
      */
     private static void removeStaleNonSourceBridges(
             List<EntityChannelSpark> network, EntityChannelSpark source) {
-        if (network == null || network.isEmpty() || source == null) {
+if (network == null || network.isEmpty()) {
             return;
         }
         Set<UUID> members = new HashSet<>();
         for (EntityChannelSpark spark : network) {
-            if (spark != null) {
-                members.add(spark.getUniqueID());
-            }
+            if (spark != null) members.add(spark.getUniqueID());
         }
-        java.util.Iterator<Map.Entry<BridgeKey, BridgeRecord>> iterator =
-                AE_BRIDGES.entrySet().iterator();
+        java.util.Iterator<Map.Entry<BridgeKey, BridgeRecord>> iterator = AE_BRIDGES.entrySet().iterator();
         while (iterator.hasNext()) {
             BridgeRecord record = iterator.next().getValue();
             if (record.first == null || record.second == null
                     || !members.contains(record.first.getUniqueID())
-                    || !members.contains(record.second.getUniqueID())) {
-                continue;
-            }
-            if (record.first != source && record.second != source) {
+                    || !members.contains(record.second.getUniqueID())) continue;
+            if (source == null || (record.first != source && record.second != source)) {
                 destroyConnections(record.connections);
                 iterator.remove();
             }

@@ -16,22 +16,28 @@ import nyonio.client.handler.FluixPoolHUDHandler;
 import nyonio.client.handler.ManaTerminalHandler;
 import nyonio.client.model.ManaPacketModel;
 import nyonio.entity.EntityChannelSpark;
+import nyonio.entity.EntityMainChannelSpark;
+
 import nyonio.client.render.RenderChannelSpark;
+import nyonio.client.render.RenderMainChannelSpark;
+
 import nyonio.client.render.RenderTileFluixManaPool;
 import nyonio.tile.TileFluixManaPool;
 import vazkii.botania.api.state.enums.PoolVariant;
 
 @SideOnly(Side.CLIENT)
 public class ClientProxy extends CommonProxy {
-    
+
     @Override
     public void preInit(FMLPreInitializationEvent event) {
         super.preInit(event);
         // Entity renderers must be registered before RenderManager is initialized.
         RenderingRegistry.registerEntityRenderingHandler(EntityChannelSpark.class,
             RenderChannelSpark::new);
+        RenderingRegistry.registerEntityRenderingHandler(EntityMainChannelSpark.class,
+            RenderMainChannelSpark::new);
     }
-    
+
     @Override
     public void init(FMLInitializationEvent event) {
         super.init(event);
@@ -40,7 +46,7 @@ public class ClientProxy extends CommonProxy {
         MinecraftForge.EVENT_BUS.register(new ManaTerminalHandler());
         ModelLoaderRegistry.registerLoader(new ManaPacketModel.Loader());
     }
-    
+
     @Override
     public void registerModels() {
         for (PoolVariant variant : PoolVariant.values()) {
@@ -50,7 +56,7 @@ public class ClientProxy extends CommonProxy {
                 new ModelResourceLocation(BotaniaApplie.MODID + ":fluix_mana_pool", "variant=" + variant.getName())
             );
         }
-        
+
         if (ModConfig.ITEMS.enableManaCellHousing && BotaniaApplie.manaCellHousing != null) {
             registerItemModel(BotaniaApplie.manaCellHousing, 0, "mana_cell_housing");
         }
@@ -65,7 +71,7 @@ public class ClientProxy extends CommonProxy {
         registerItemModel(BotaniaApplie.manaStorageCell64m, 0, "mana_storage_cell_64m");
         registerItemModel(BotaniaApplie.manaStorageCell256m, 0, "mana_storage_cell_256m");
         registerItemModel(BotaniaApplie.manaStorageCell1g, 0, "mana_storage_cell_1g");
-        
+
         if (ModConfig.ITEMS.enableManaStorageComponent && BotaniaApplie.manaStorageComponent1k != null) {
             registerItemModel(BotaniaApplie.manaStorageComponent1k, 0, "mana_storage_component_1k");
             registerItemModel(BotaniaApplie.manaStorageComponent4k, 0, "mana_storage_component_4k");
@@ -81,13 +87,14 @@ public class ClientProxy extends CommonProxy {
         }
         registerItemModel(BotaniaApplie.manaPacket, 0, "mana_packet");
         registerItemModel(BotaniaApplie.channelSpark, 0, "channel_spark");
+        registerItemModel(BotaniaApplie.mainChannelSpark, 0, "main_channel_spark");
         registerItemModel(BotaniaApplie.manaCardBasic, 0, "mana_card_basic");
         registerItemModel(BotaniaApplie.manaCardAdvanced, 0, "mana_card_advanced");
         registerItemModel(BotaniaApplie.fluixPoolCard, 0, "fluixpool_card");
     }
-    
+
     private void registerItemModel(Item item, int meta, String name) {
-        ModelLoader.setCustomModelResourceLocation(item, meta, 
+        ModelLoader.setCustomModelResourceLocation(item, meta,
             new ModelResourceLocation(BotaniaApplie.MODID + ":" + name, "inventory"));
     }
 }

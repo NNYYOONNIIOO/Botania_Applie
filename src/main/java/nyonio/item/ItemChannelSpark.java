@@ -65,28 +65,32 @@ public class ItemChannelSpark extends Item {
         return new ActionResult<>(result, player.getHeldItem(hand));
     }
 
-    private static EnumActionResult placeFloating(World world, EntityPlayer player, EnumHand hand, Vec3d location) {
+    protected EntityChannelSpark createSpark(World world, double x, double y, double z) {
+        return new EntityChannelSpark(world, x, y, z);
+    }
+
+    protected EnumActionResult placeFloating(World world, EntityPlayer player, EnumHand hand, Vec3d location) {
         BlockPos containingBlock = new BlockPos(location);
         if (ChannelSparkNetwork.hasSparkInBlock(world, containingBlock)) {
             return EnumActionResult.FAIL;
         }
-        EntityChannelSpark spark = new EntityChannelSpark(world, location.x, location.y, location.z);
+        EntityChannelSpark spark = createSpark(world, location.x, location.y, location.z);
         return spawn(world, player, hand, spark);
     }
 
-    private static EnumActionResult placeAt(World world, EntityPlayer player, EnumHand hand, BlockPos targetPos) {
+    protected EnumActionResult placeAt(World world, EntityPlayer player, EnumHand hand, BlockPos targetPos) {
         BlockPos sparkBlock = targetPos.up();
         if (ChannelSparkNetwork.hasSparkInBlock(world, sparkBlock)) {
             return EnumActionResult.FAIL;
         }
 
-        EntityChannelSpark spark = new EntityChannelSpark(world,
+        EntityChannelSpark spark = createSpark(world,
                 targetPos.getX() + 0.5D, targetPos.getY() + 1.5D, targetPos.getZ() + 0.5D);
         spark.setTarget(targetPos);
         return spawn(world, player, hand, spark);
     }
 
-    private static EnumActionResult spawn(World world, EntityPlayer player, EnumHand hand, EntityChannelSpark spark) {
+    protected EnumActionResult spawn(World world, EntityPlayer player, EnumHand hand, EntityChannelSpark spark) {
         if (!world.spawnEntity(spark)) {
             return EnumActionResult.FAIL;
         }
