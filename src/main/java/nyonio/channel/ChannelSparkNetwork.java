@@ -407,7 +407,46 @@ public final class ChannelSparkNetwork {
         } catch (Throwable ignored) {
         }
 
-        return createGridConnection(firstNode, secondNode);
+        AEPartLocation direction = determineBridgeDirection(
+                first, firstNode, second, secondNode);
+        return createGridConnection(firstNode, secondNode, direction);
+    }
+
+    private static AEPartLocation determineBridgeDirection(EntityChannelSpark first,
+                                                            IGridNode firstNode,
+                                                            EntityChannelSpark second,
+                                                            IGridNode secondNode) {
+        if (isCableNode(firstNode)) {
+            return getCableAttachmentDirection(first);
+        }
+        if (isCableNode(secondNode)) {
+            AEPartLocation direction = getCableAttachmentDirection(second);
+            return direction == AEPartLocation.INTERNAL
+                    ? AEPartLocation.INTERNAL : direction.getOpposite();
+        }
+        return AEPartLocation.INTERNAL;
+    }
+
+    private static AEPartLocation getCableAttachmentDirection(EntityChannelSpark spark) {
+        if (spark == null || spark.getTargetPos() == null) {
+            return AEPartLocation.UP;
+        }
+
+        BlockPos target = spark.getTargetPos();
+        double dx = spark.posX - (target.getX() + 0.5D);
+        double dy = spark.posY - (target.getY() + 0.5D);
+        double dz = spark.posZ - (target.getZ() + 0.5D);
+        double ax = Math.abs(dx);
+        double ay = Math.abs(dy);
+        double az = Math.abs(dz);
+
+        if (ay >= ax && ay >= az) {
+            return dy >= 0.0D ? AEPartLocation.UP : AEPartLocation.DOWN;
+        }
+        if (ax >= az) {
+            return dx >= 0.0D ? AEPartLocation.EAST : AEPartLocation.WEST;
+        }
+        return dz >= 0.0D ? AEPartLocation.SOUTH : AEPartLocation.NORTH;
     }
 
     private static void downgradeConnection(EntityChannelSpark first, EntityChannelSpark second,
@@ -882,10 +921,10 @@ public final class ChannelSparkNetwork {
         if (!isCarryingNode(endpoint)) {
             return null;
         }
-        if (!isCableNode(endpoint)) {
-            return endpoint;
-        }
-        return findNonCableCarryingNodeFromGrid(endpoint);
+        // Keep the cable node as the endpoint so AE2's channel path reaches
+        // smart/dense cable accounting. The connection factory supplies a
+        // real physical direction for cable endpoints instead of INTERNAL.
+        return endpoint;
     }
 
     private static IGridNode findNonCableCarryingNodeFromGrid(IGridNode endpoint) {
@@ -958,7 +997,8 @@ public final class ChannelSparkNetwork {
         }
     }
 
-    private static Object createGridConnection(IGridNode first, IGridNode second) {
+    private static Object createGridConnection(IGridNode first, IGridNode second,
+                                               AEPartLocation direction) {
         // AEApi's convenience method does not preserve an explicit part
         // location on every AE2 Extended Life build. When it creates a
         // connection without a location, dense-cable inspection can receive a
@@ -972,7 +1012,7 @@ public final class ChannelSparkNetwork {
             }
             PENDING_CHANNEL_CAPACITY.set(ChannelSparkConfig.getChannelCapacity());
             try {
-                Object connection = factory.invoke(null, first, second, AEPartLocation.INTERNAL);
+                Object connection = factory.invoke(null, first, second, direction);
                 registerConnection(connection);
                 repathAfterConnection(first, second);
                 return connection;
@@ -981,6 +1021,14 @@ public final class ChannelSparkNetwork {
             }
         } catch (Throwable error) {
             logConnectionFailure("GridConnection internal factory", first, second, error);
+        }
+
+        // AEApi's convenience method creates an INTERNAL connection on this
+        // AE2 build. It is safe only when no cable endpoint needs a physical
+        // direction; using it for a cable would reintroduce a null facing in
+        // PartDenseCable.isDense().
+        if (direction != AEPartLocation.INTERNAL) {
+            return null;
         }
 
         try {

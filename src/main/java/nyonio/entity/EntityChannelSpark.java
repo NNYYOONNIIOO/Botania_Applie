@@ -127,7 +127,9 @@ public class EntityChannelSpark extends Entity {
 
     @Override
     public boolean canBeCollidedWith() {
-        return false;
+        // The spark remains non-solid because its collision box is null, but
+        // must be selectable for the forest wand's entity interaction.
+        return true;
     }
 
     @Override
