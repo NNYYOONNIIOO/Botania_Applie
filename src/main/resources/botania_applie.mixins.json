@@ -9,7 +9,8 @@
     "MixinFluixInterfaceTargets",
     "MixinChannelSparkGridConnection",
     "MixinGridNodeConnectedSides",
-    "MixinPartCableInternalChannels"
+    "MixinPartCableInternalChannels",
+    "MixinDenseCableInternal"
   ],
   "injectors": {
     "defaultRequire": 1
