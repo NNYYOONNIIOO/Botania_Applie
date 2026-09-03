@@ -10,6 +10,7 @@ import appeng.api.parts.IPart;
 import appeng.api.parts.IPartHost;
 import appeng.api.util.AEPartLocation;
 import appeng.me.GridConnection;
+import appeng.tile.networking.TileController;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.AxisAlignedBB;
@@ -122,10 +123,17 @@ public final class ChannelSparkNetwork {
     private static final class BridgeEndpoint {
         private final IGridNode node;
         private final AEPartLocation direction;
+        private final boolean controllerFace;
 
         private BridgeEndpoint(IGridNode node, AEPartLocation direction) {
+            this(node, direction, false);
+        }
+
+        private BridgeEndpoint(IGridNode node, AEPartLocation direction,
+                               boolean controllerFace) {
             this.node = node;
             this.direction = direction;
+            this.controllerFace = controllerFace;
         }
     }
 
@@ -486,8 +494,11 @@ public final class ChannelSparkNetwork {
         for (BridgeEndpoint[] pair : pairs) {
             BridgeEndpoint firstEndpoint = pair[0];
             BridgeEndpoint secondEndpoint = pair[1];
-            if (firstEndpoint.node == secondEndpoint.node
-                    || hasDirectConnection(firstEndpoint.node, secondEndpoint.node)) {
+            if (firstEndpoint.node == secondEndpoint.node) {
+                continue;
+            }
+            if (!firstEndpoint.controllerFace && !secondEndpoint.controllerFace
+                    && hasDirectConnection(firstEndpoint.node, secondEndpoint.node)) {
                 continue;
             }
 
@@ -497,11 +508,20 @@ public final class ChannelSparkNetwork {
                 continue;
             }
 
-            // Keep every wireless connection INTERNAL. The selected endpoint
-            // node carries the controller face's channel path, while INTERNAL
-            // prevents AE2 cable geometry from treating the bridge as a side.
-            Object connection = createGridConnection(firstEndpoint.node,
-                    secondEndpoint.node, AEPartLocation.INTERNAL);
+            // Controller faces are represented by one node with six logical
+            // directions. Orient the connection from the controller side so
+            // AE2 allocates the requested face in the deterministic order.
+            BridgeEndpoint connectionFirst = firstEndpoint;
+            BridgeEndpoint connectionSecond = secondEndpoint;
+            if (!connectionFirst.controllerFace && connectionSecond.controllerFace) {
+                BridgeEndpoint swap = connectionFirst;
+                connectionFirst = connectionSecond;
+                connectionSecond = swap;
+            }
+            AEPartLocation connectionDirection = connectionFirst.controllerFace
+                    ? connectionFirst.direction : AEPartLocation.INTERNAL;
+            Object connection = createGridConnection(connectionFirst.node,
+                    connectionSecond.node, connectionDirection);
             if (connection instanceof IGridConnection) {
                 connections.add((IGridConnection) connection);
             }
@@ -744,6 +764,7 @@ public final class ChannelSparkNetwork {
         TileEntity tile = world.getTileEntity(pos);
         if (tile instanceof IGridHost) {
             IGridHost host = (IGridHost) tile;
+            boolean controller = host instanceof TileController;
             for (EnumFacing facing : CHANNEL_DIRECTION_ORDER) {
                 AEPartLocation direction = AEPartLocation.fromFacing(facing);
                 IGridNode node = null;
@@ -751,7 +772,7 @@ public final class ChannelSparkNetwork {
                     node = host.getGridNode(direction);
                 } catch (Throwable ignored) {
                 }
-                addBridgeEndpoint(endpoints, node, direction);
+                addBridgeEndpoint(endpoints, node, direction, controller);
             }
 
             if (endpoints.isEmpty()) {
@@ -760,7 +781,7 @@ public final class ChannelSparkNetwork {
                     internal = host.getGridNode(AEPartLocation.INTERNAL);
                 } catch (Throwable ignored) {
                 }
-                addBridgeEndpoint(endpoints, internal, AEPartLocation.INTERNAL);
+                addBridgeEndpoint(endpoints, internal, AEPartLocation.INTERNAL, controller);
             }
             if (!endpoints.isEmpty()) {
                 return collapseCableEndpoints(endpoints);
@@ -799,15 +820,38 @@ public final class ChannelSparkNetwork {
     private static void addBridgeEndpoint(List<BridgeEndpoint> endpoints,
                                           IGridNode node,
                                           AEPartLocation direction) {
-        if (!isCarryingNode(node)) {
+        addBridgeEndpoint(endpoints, node, direction, false);
+    }
+
+    private static void addBridgeEndpoint(List<BridgeEndpoint> endpoints,
+                                          IGridNode node,
+                                          AEPartLocation direction,
+                                          boolean controllerFace) {
+        if (controllerFace ? !isControllerNode(node) : !isCarryingNode(node)) {
             return;
         }
         for (BridgeEndpoint existing : endpoints) {
-            if (existing.node == node) {
+            if (existing.node == node
+                    && (!controllerFace || (existing.controllerFace
+                    && existing.direction == direction))) {
                 return;
             }
         }
-        endpoints.add(new BridgeEndpoint(node, direction));
+        endpoints.add(new BridgeEndpoint(node, direction, controllerFace));
+    }
+
+    /**
+     * AE2 controllers expose a dense channel allocator while also marking
+     * their node CANNOT_CARRY. That flag is correct for ordinary path nodes,
+     * but must not reject a controller face used as a bridge endpoint.
+     */
+    private static boolean isControllerNode(IGridNode node) {
+        try {
+            return node != null && node.getGrid() != null
+                    && node.hasFlag(GridFlags.DENSE_CAPACITY);
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     private static IGridNode findBridgeNode(World world, BlockPos pos) {
