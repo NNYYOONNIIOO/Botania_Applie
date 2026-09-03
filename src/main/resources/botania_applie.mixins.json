@@ -7,10 +7,7 @@
   "compatibilityLevel": "JAVA_8",
   "mixins": [
     "MixinFluixInterfaceTargets",
-    "MixinChannelSparkGridConnection",
-    "MixinDenseCableInternal",
-    "MixinPartCableInternalChannels",
-    "MixinGridNodeConnectedSides"
+    "MixinChannelSparkGridConnection"
   ],
   "injectors": {
     "defaultRequire": 1

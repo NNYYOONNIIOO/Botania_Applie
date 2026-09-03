@@ -11,6 +11,7 @@ import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.RayTraceResult;
 import net.minecraft.world.World;
 import nyonio.channel.ChannelSparkNetwork;
+import vazkii.botania.common.item.ItemTwigWand;
 import vazkii.botania.common.item.ModItems;
 import java.util.HashMap;
 import java.util.Map;
@@ -150,7 +151,7 @@ public class EntityChannelSpark extends Entity {
     @Override
     public boolean processInitialInteract(EntityPlayer player, EnumHand hand) {
         ItemStack stack = player.getHeldItem(hand);
-        if (stack.isEmpty() || stack.getItem() != ModItems.twigWand) {
+        if (stack.isEmpty() || !(stack.getItem() instanceof ItemTwigWand)) {
             return false;
         }
 
