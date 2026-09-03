@@ -904,18 +904,19 @@ if (network == null || network.isEmpty()) {
             return false;
         }
         try {
-            // Attach only the inner P2P node to the real local network. The
-            // outer node joins it through a local INTERNAL link, matching the
-            // separation used by AE2's ME P2P tunnel.
+            // Both nodes are attached to the same local AE network, but they
+            // remain separate GridNodes. This mirrors AE2's P2P-ME part:
+            // the inner node consumes a compressed channel locally, while
+            // the outer dense node is the endpoint used by remote tunnels.
             IGridConnection localAttachment = GridConnection.create(
                     endpoint.node, proxy.innerNode(), endpoint.direction);
             proxy.attachments.add(localAttachment);
             repathAfterConnection(endpoint.node, proxy.innerNode());
 
             IGridConnection outerAttachment = GridConnection.create(
-                    proxy.innerNode(), proxy.node(), AEPartLocation.INTERNAL);
+                    endpoint.node, proxy.node(), endpoint.direction);
             proxy.attachments.add(outerAttachment);
-            repathAfterConnection(proxy.innerNode(), proxy.node());
+            repathAfterConnection(endpoint.node, proxy.node());
             return safeGrid(proxy.node()) == endpointGrid;
         } catch (Throwable error) {
             logConnectionFailure("AE2 channel spark endpoint attachment",
