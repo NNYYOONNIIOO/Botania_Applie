@@ -407,9 +407,10 @@ public final class ChannelSparkNetwork {
         } catch (Throwable ignored) {
         }
 
-        AEPartLocation direction = determineBridgeDirection(
-                first, firstNode, second, secondNode);
-        return createGridConnection(firstNode, secondNode, direction);
+        // A spark bridge is not a physical cable side. Keep the connection
+        // internal so AE2 still counts its channels while the dense-cable
+        // geometry mixin prevents INTERNAL from being treated as a direction.
+        return createGridConnection(firstNode, secondNode, AEPartLocation.INTERNAL);
     }
 
     private static AEPartLocation determineBridgeDirection(EntityChannelSpark first,
