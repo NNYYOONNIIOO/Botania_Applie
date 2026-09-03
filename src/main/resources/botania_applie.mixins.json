@@ -8,7 +8,8 @@
   "mixins": [
     "MixinFluixInterfaceTargets",
     "MixinChannelSparkGridConnection",
-    "MixinGridNodeConnectedSides"
+    "MixinGridNodeConnectedSides",
+    "MixinPartCableInternalChannels"
   ],
   "injectors": {
     "defaultRequire": 1

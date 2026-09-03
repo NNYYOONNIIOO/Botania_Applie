@@ -416,11 +416,10 @@ public final class ChannelSparkNetwork {
         } catch (Throwable ignored) {
         }
 
-        // A cable endpoint needs a real side so AE2 can report the bridge's
-        // used channels to smart/dense cables and TOP. Non-cable endpoints
-        // retain INTERNAL because they have no physical cable side.
-        return createGridConnection(firstNode, secondNode,
-                determineBridgeDirection(first, firstNode, second, secondNode));
+        // A wireless bridge has no physical side. Keep it internal while
+        // leaving it attached to the cable node so AE2 pathing and channel
+        // accounting still see the bridge.
+        return createGridConnection(firstNode, secondNode, AEPartLocation.INTERNAL);
     }
 
     private static AEPartLocation determineBridgeDirection(EntityChannelSpark first,
