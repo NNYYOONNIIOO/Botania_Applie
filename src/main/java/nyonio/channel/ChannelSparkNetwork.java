@@ -298,39 +298,51 @@ public final class ChannelSparkNetwork {
             return;
         }
 
-        // Every primary spark in one logical network is a P2P-style bridge
-        // endpoint. The main spark is only the designated controller source;
-        // it must not limit the network to a single endpoint or single route.
-        List<EntityChannelSpark> endpoints = new ArrayList<>();
+        // The main channel spark is the P2P-ME hub. Create one independent
+        // bridge from it to every ordinary channel spark in the logical
+        // network. Ordinary sparks must not become a chain or a mesh: doing
+        // that makes AE2 consume channels from intermediate sparks instead of
+        // exposing each remote cable as a separate P2P endpoint.
+        EntityChannelSpark main = null;
+        for (EntityChannelSpark candidate : network) {
+            if (candidate != null && candidate.isMainChannelSpark()
+                    && hasControllerEndpoint(candidate)
+                    && (main == null || isEarlier(candidate, main))) {
+                main = candidate;
+            }
+        }
+        if (main == null) {
+            removeStaleNonSourceBridges(network, null);
+            return;
+        }
+
+        List<EntityChannelSpark> endpointSparks = new ArrayList<>();
         for (EntityChannelSpark spark : network) {
-            if (spark != null && hasUsableEndpoint(spark)) {
-                endpoints.add(spark);
+            if (spark != null && spark != main && !spark.isMainChannelSpark()
+                    && hasUsableEndpoint(spark)) {
+                endpointSparks.add(spark);
             }
         }
 
-        for (int firstIndex = 0; firstIndex < endpoints.size(); firstIndex++) {
-            EntityChannelSpark first = endpoints.get(firstIndex);
-            for (int secondIndex = firstIndex + 1; secondIndex < endpoints.size(); secondIndex++) {
-                EntityChannelSpark second = endpoints.get(secondIndex);
-                if (first == second) {
+        // Remove bridges left by the previous mesh implementation before
+        // building the direct main-to-every-endpoint star topology.
+        removeStaleNonSourceBridges(network, main);
+        for (EntityChannelSpark other : endpointSparks) {
+            BridgeKey key = new BridgeKey(main.getUniqueID(), other.getUniqueID());
+            int expectedConnections = expectedBridgeConnectionCount(main, other);
+            BridgeRecord existing = AE_BRIDGES.get(key);
+            if (existing != null) {
+                if (existing.expectedConnections >= expectedConnections
+                        && areConnectionsAlive(existing.connections)) {
                     continue;
                 }
-                BridgeKey key = new BridgeKey(first.getUniqueID(), second.getUniqueID());
-                int expectedConnections = expectedBridgeConnectionCount(first, second);
-                BridgeRecord existing = AE_BRIDGES.get(key);
-                if (existing != null) {
-                    if (existing.expectedConnections >= expectedConnections
-                            && areConnectionsAlive(existing.connections)) {
-                        continue;
-                    }
-                    destroyConnections(existing.connections);
-                    AE_BRIDGES.remove(key);
-                }
-                List<IGridConnection> connections = createGridConnectionsIfPossible(first, second);
-                if (!connections.isEmpty()) {
-                    AE_BRIDGES.put(key, new BridgeRecord(first, second, connections,
-                            expectedConnections));
-                }
+                destroyConnections(existing.connections);
+                AE_BRIDGES.remove(key);
+            }
+            List<IGridConnection> connections = createGridConnectionsIfPossible(main, other);
+            if (!connections.isEmpty()) {
+                AE_BRIDGES.put(key, new BridgeRecord(main, other, connections,
+                        expectedConnections));
             }
         }
     }
