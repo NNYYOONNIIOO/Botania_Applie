@@ -27,6 +27,7 @@ import vazkii.botania.common.network.PacketHandler;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
@@ -303,7 +304,13 @@ public final class ChannelSparkNetwork {
             return;
         }
 
-        EntityChannelSpark anchor = endpointSparks.get(0);
+        // Use one stable source for the whole AE bridge. If a controller is
+        // present, its face nodes are the channel source regardless of the
+        // order in which the other sparks were discovered. This prevents a
+        // network such as interface -> interface -> controller from becoming
+        // a chain whose channel allocation depends on entity iteration order.
+        EntityChannelSpark anchor = selectChannelSource(endpointSparks);
+        removeStaleNonSourceBridges(network, anchor);
         for (int index = 1; index < endpointSparks.size(); index++) {
             EntityChannelSpark other = endpointSparks.get(index);
             BridgeKey key = new BridgeKey(anchor.getUniqueID(), other.getUniqueID());
@@ -322,6 +329,80 @@ public final class ChannelSparkNetwork {
             if (!connections.isEmpty()) {
                 AE_BRIDGES.put(key, new BridgeRecord(anchor, other, connections,
                         expectedConnections));
+            }
+        }
+    }
+
+    /**
+     * Selects the logical main channel spark. A controller-attached spark is
+     * always preferred, and ties are resolved by placement order. When no
+     * controller is attached, placement order still makes the fallback stable
+     * instead of depending on the world's entity-list order.
+     */
+    private static EntityChannelSpark selectChannelSource(
+            List<EntityChannelSpark> endpointSparks) {
+        if (endpointSparks == null || endpointSparks.isEmpty()) {
+            return null;
+        }
+        Collections.sort(endpointSparks, new Comparator<EntityChannelSpark>() {
+            @Override
+            public int compare(EntityChannelSpark first, EntityChannelSpark second) {
+                boolean firstController = hasControllerEndpoint(first);
+                boolean secondController = hasControllerEndpoint(second);
+                if (firstController != secondController) {
+                    return firstController ? -1 : 1;
+                }
+                if (first.getPlacementOrder() != second.getPlacementOrder()) {
+                    return first.getPlacementOrder() < second.getPlacementOrder() ? -1 : 1;
+                }
+                return Integer.compare(first.getEntityId(), second.getEntityId());
+            }
+        });
+        return endpointSparks.get(0);
+    }
+
+    private static boolean hasControllerEndpoint(EntityChannelSpark spark) {
+        if (spark == null || spark.isDead || spark.world == null
+                || spark.getTargetPos() == null) {
+            return false;
+        }
+        for (BridgeEndpoint endpoint : findBridgeEndpoints(
+                spark.world, spark.getTargetPos())) {
+            if (endpoint.controllerFace) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * If a controller becomes the source after the logical network was
+     * already bridged, remove old non-source-to-non-source connections before
+     * creating the new star topology.
+     */
+    private static void removeStaleNonSourceBridges(
+            List<EntityChannelSpark> network, EntityChannelSpark source) {
+        if (network == null || network.isEmpty() || source == null) {
+            return;
+        }
+        Set<UUID> members = new HashSet<>();
+        for (EntityChannelSpark spark : network) {
+            if (spark != null) {
+                members.add(spark.getUniqueID());
+            }
+        }
+        java.util.Iterator<Map.Entry<BridgeKey, BridgeRecord>> iterator =
+                AE_BRIDGES.entrySet().iterator();
+        while (iterator.hasNext()) {
+            BridgeRecord record = iterator.next().getValue();
+            if (record.first == null || record.second == null
+                    || !members.contains(record.first.getUniqueID())
+                    || !members.contains(record.second.getUniqueID())) {
+                continue;
+            }
+            if (record.first != source && record.second != source) {
+                destroyConnections(record.connections);
+                iterator.remove();
             }
         }
     }

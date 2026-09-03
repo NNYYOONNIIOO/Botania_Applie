@@ -43,5 +43,6 @@ item.botania_applie.fluixpool_card.name=福鲁伊克斯魔力池卡
 item.botania_applie.channel_spark.name=频道火花
 item.botania_applie:channel_spark.name=频道火花
 botania_applie:channel_spark=频道火花
+entity.channel_spark.name=频道火花
 entity.botania_applie.channel_spark.name=频道火花
 entity.botania_applie:channel_spark.name=频道火花
