@@ -9,7 +9,11 @@ import appeng.api.networking.pathing.IPathingGrid;
 import appeng.api.parts.IPart;
 import appeng.api.parts.IPartHost;
 import appeng.api.util.AEPartLocation;
+import appeng.api.util.AECableType;
+import appeng.api.util.DimensionalCoord;
 import appeng.me.GridConnection;
+import appeng.me.helpers.AENetworkProxy;
+import appeng.me.helpers.IGridProxyable;
 import appeng.tile.networking.TileController;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
@@ -17,6 +21,7 @@ import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.item.ItemStack;
 import net.minecraft.world.World;
 import nyonio.BotaniaApplie;
 import nyonio.ChannelSparkConfig;
@@ -28,6 +33,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
@@ -121,6 +127,97 @@ public final class ChannelSparkNetwork {
         }
     }
 
+    /** Lightweight IGridProxyable host used by an AE2-style outer proxy. */
+    private static final class ProxyHost implements IGridProxyable {
+        private final IGridNode anchor;
+        private AENetworkProxy proxy;
+
+        private ProxyHost(IGridNode anchor) {
+            this.anchor = anchor;
+        }
+
+        private void setProxy(AENetworkProxy proxy) {
+            this.proxy = proxy;
+        }
+
+        @Override
+        public AENetworkProxy getProxy() {
+            return proxy;
+        }
+
+        @Override
+        public DimensionalCoord getLocation() {
+            try {
+                return anchor == null || anchor.getGridBlock() == null
+                        ? null : anchor.getGridBlock().getLocation();
+            } catch (Throwable ignored) {
+                return null;
+            }
+        }
+
+        @Override
+        public void gridChanged() {
+            // The proxy node is ephemeral and is refreshed by the bridge tick.
+        }
+
+        @Override
+        public IGridNode getGridNode(AEPartLocation direction) {
+            return anchor;
+        }
+
+        @Override
+       public void securityBreak() {
+           // There is no physical block to break for a channel spark proxy.
+       }
+
+        @Override
+        public AECableType getCableConnectionType(AEPartLocation direction) {
+            return AECableType.NONE;
+        }
+    }
+
+    /**
+     * Mirrors PartP2PTunnelME.outerProxy. The proxy node is attached to one
+     * real AE endpoint, while the two proxy nodes form the logical P2P link.
+     */
+    private static final class BridgeProxy {
+        private final AENetworkProxy proxy;
+        private final List<IGridConnection> attachments = new ArrayList<>();
+
+        private BridgeProxy(BridgeEndpoint endpoint) {
+            ProxyHost host = new ProxyHost(endpoint.node);
+            this.proxy = new AENetworkProxy(
+                    host, "botania_applie_channel_spark", ItemStack.EMPTY, false);
+            host.setProxy(this.proxy);
+            this.proxy.setFlags(GridFlags.DENSE_CAPACITY, GridFlags.CANNOT_CARRY_COMPRESSED);
+            if (endpoint.direction != null
+                    && endpoint.direction != AEPartLocation.INTERNAL
+                    && endpoint.direction.getFacing() != null) {
+                this.proxy.setValidSides(EnumSet.of(
+                        endpoint.direction.getFacing().getOpposite()));
+            }
+            this.proxy.onReady();
+        }
+
+        private IGridNode node() {
+            return proxy.getNode();
+        }
+
+        private void destroy() {
+            destroyConnections(attachments);
+            proxy.invalidate();
+        }
+    }
+
+    private static final class BridgeBuild {
+        private final List<IGridConnection> connections = new ArrayList<>();
+        private final List<BridgeProxy> proxies = new ArrayList<>();
+
+        private boolean isEmpty() {
+            return connections.isEmpty();
+        }
+    }
+
     private static final class BridgeEndpoint {
         private final IGridNode node;
         private final AEPartLocation direction;
@@ -142,13 +239,15 @@ public final class ChannelSparkNetwork {
         private final EntityChannelSpark first;
         private final EntityChannelSpark second;
         private final List<IGridConnection> connections;
+        private final List<BridgeProxy> proxies;
         private final int expectedConnections;
 
         private BridgeRecord(EntityChannelSpark first, EntityChannelSpark second,
-                             List<IGridConnection> connections, int expectedConnections) {
+                             BridgeBuild build, int expectedConnections) {
             this.first = first;
             this.second = second;
-            this.connections = new ArrayList<>(connections);
+            this.connections = new ArrayList<>(build.connections);
+            this.proxies = new ArrayList<>(build.proxies);
             this.expectedConnections = expectedConnections;
         }
     }
@@ -298,11 +397,9 @@ public final class ChannelSparkNetwork {
             return;
         }
 
-        // The main channel spark is the P2P-ME hub. Create one independent
-        // bridge from it to every ordinary channel spark in the logical
-        // network. Ordinary sparks must not become a chain or a mesh: doing
-        // that makes AE2 consume channels from intermediate sparks instead of
-        // exposing each remote cable as a separate P2P endpoint.
+        // The main channel spark is the P2P-ME hub. Each ordinary spark gets
+        // a separate outer-proxy bridge, so remote networks are not treated
+        // as one direct dense-cable connection.
         EntityChannelSpark main = null;
         for (EntityChannelSpark candidate : network) {
             if (candidate != null && candidate.isMainChannelSpark()
@@ -324,8 +421,6 @@ public final class ChannelSparkNetwork {
             }
         }
 
-        // Remove bridges left by the previous mesh implementation before
-        // building the direct main-to-every-endpoint star topology.
         removeStaleNonSourceBridges(network, main);
         for (EntityChannelSpark other : endpointSparks) {
             BridgeKey key = new BridgeKey(main.getUniqueID(), other.getUniqueID());
@@ -336,12 +431,12 @@ public final class ChannelSparkNetwork {
                         && areConnectionsAlive(existing.connections)) {
                     continue;
                 }
-                destroyConnections(existing.connections);
+                destroyBridge(existing);
                 AE_BRIDGES.remove(key);
             }
-            List<IGridConnection> connections = createGridConnectionsIfPossible(main, other);
-            if (!connections.isEmpty()) {
-                AE_BRIDGES.put(key, new BridgeRecord(main, other, connections,
+            BridgeBuild build = createGridConnectionsIfPossible(main, other);
+            if (!build.isEmpty()) {
+                AE_BRIDGES.put(key, new BridgeRecord(main, other, build,
                         expectedConnections));
             }
         }
@@ -402,7 +497,7 @@ if (network == null || network.isEmpty()) {
                     || !members.contains(record.first.getUniqueID())
                     || !members.contains(record.second.getUniqueID())) continue;
             if (source == null || (record.first != source && record.second != source)) {
-                destroyConnections(record.connections);
+                destroyBridge(record);
                 iterator.remove();
             }
         }
@@ -448,7 +543,7 @@ if (network == null || network.isEmpty()) {
                     && areLogicallyConnected(record.first, record.second)
                     && areConnectionsAlive(record.connections);
             if (!valid) {
-                destroyConnections(record.connections);
+                destroyBridge(record);
                 iterator.remove();
             }
         }
@@ -474,6 +569,18 @@ if (network == null || network.isEmpty()) {
             }
         }
         return true;
+    }
+
+    private static void destroyBridge(BridgeRecord record) {
+        if (record == null) {
+            return;
+        }
+        destroyConnections(record.connections);
+        for (BridgeProxy proxy : record.proxies) {
+            if (proxy != null) {
+                proxy.destroy();
+            }
+        }
     }
 
     private static void destroyConnections(List<IGridConnection> connections) {
@@ -521,7 +628,7 @@ if (network == null || network.isEmpty()) {
         while (iterator.hasNext()) {
             BridgeRecord record = iterator.next().getValue();
             if (record.first == spark || record.second == spark) {
-                destroyConnections(record.connections);
+                destroyBridge(record);
                 iterator.remove();
             }
         }
@@ -534,82 +641,107 @@ if (network == null || network.isEmpty()) {
                 findBridgeEndpoints(second.world, second.getTargetPos())).size();
     }
 
-    private static List<IGridConnection> createGridConnectionsIfPossible(
+    private static BridgeBuild createGridConnectionsIfPossible(
             EntityChannelSpark first, EntityChannelSpark second) {
+        BridgeBuild build = new BridgeBuild();
         List<BridgeEndpoint> firstEndpoints =
                 findBridgeEndpoints(first.world, first.getTargetPos());
         List<BridgeEndpoint> secondEndpoints =
                 findBridgeEndpoints(second.world, second.getTargetPos());
         if (firstEndpoints.isEmpty() || secondEndpoints.isEmpty()) {
-            return Collections.emptyList();
+            return build;
         }
 
         List<BridgeEndpoint[]> pairs = pairBridgeEndpoints(firstEndpoints, secondEndpoints);
         if (pairs.isEmpty()) {
-            return Collections.emptyList();
+            return build;
         }
 
-        // Snapshot the grids before the first connection merges them. There
-        // is intentionally only one pair: a channel spark is a P2P link,
-        // not a six-sided cable connection.
-        Map<IGridNode, Object> initialGrids = new IdentityHashMap<>();
-        for (BridgeEndpoint endpoint : firstEndpoints) {
-            initialGrids.put(endpoint.node, safeGrid(endpoint.node));
-        }
-        for (BridgeEndpoint endpoint : secondEndpoints) {
-            initialGrids.put(endpoint.node, safeGrid(endpoint.node));
+        BridgeEndpoint firstEndpoint = pairs.get(0)[0];
+        BridgeEndpoint secondEndpoint = pairs.get(0)[1];
+        Object firstGrid = safeGrid(firstEndpoint.node);
+        Object secondGrid = safeGrid(secondEndpoint.node);
+        if (firstGrid == null || secondGrid == null || firstGrid == secondGrid) {
+            return build;
         }
 
-        boolean differentNetworks = false;
-        for (BridgeEndpoint[] pair : pairs) {
-            Object firstGrid = initialGrids.get(pair[0].node);
-            Object secondGrid = initialGrids.get(pair[1].node);
-            if (firstGrid != null && secondGrid != null && firstGrid != secondGrid) {
-                differentNetworks = true;
-                break;
-            }
-        }
-        if (!differentNetworks) {
-            return Collections.emptyList();
-        }
-
-        List<IGridConnection> connections = new ArrayList<>();
-        for (BridgeEndpoint[] pair : pairs) {
-            BridgeEndpoint firstEndpoint = pair[0];
-            BridgeEndpoint secondEndpoint = pair[1];
-            if (firstEndpoint.node == secondEndpoint.node) {
-                continue;
-            }
-            if (!firstEndpoint.controllerFace && !secondEndpoint.controllerFace
-                    && hasDirectConnection(firstEndpoint.node, secondEndpoint.node)) {
-                continue;
+        BridgeProxy firstProxy = null;
+        BridgeProxy secondProxy = null;
+        try {
+            firstProxy = new BridgeProxy(firstEndpoint);
+            secondProxy = new BridgeProxy(secondEndpoint);
+            if (!attachBridgeProxy(firstProxy, firstEndpoint)
+                    || !attachBridgeProxy(secondProxy, secondEndpoint)) {
+                if (firstProxy != null) {
+                    firstProxy.destroy();
+                }
+                if (secondProxy != null) {
+                    secondProxy.destroy();
+                }
+                return build;
             }
 
-            Object firstGrid = initialGrids.get(firstEndpoint.node);
-            Object secondGrid = initialGrids.get(secondEndpoint.node);
-            if (firstGrid == null || secondGrid == null || firstGrid == secondGrid) {
-                continue;
+            // This follows PartP2PTunnelME: connect the two dense outer
+            // proxies, not the real cable/controller nodes directly.
+            IGridConnection connection = createP2PGridConnection(
+                    firstProxy.node(), secondProxy.node());
+            if (connection == null) {
+                firstProxy.destroy();
+                secondProxy.destroy();
+                return build;
             }
-
-            // Controller faces are represented by one node with six logical
-            // directions. Orient the connection from the controller side so
-            // AE2 allocates the requested face in the deterministic order.
-            BridgeEndpoint connectionFirst = firstEndpoint;
-            BridgeEndpoint connectionSecond = secondEndpoint;
-            if (!connectionFirst.controllerFace && connectionSecond.controllerFace) {
-                BridgeEndpoint swap = connectionFirst;
-                connectionFirst = connectionSecond;
-                connectionSecond = swap;
+            build.proxies.add(firstProxy);
+            build.proxies.add(secondProxy);
+            build.connections.add(connection);
+            return build;
+        } catch (Throwable error) {
+            if (firstProxy != null) {
+                firstProxy.destroy();
             }
-            AEPartLocation connectionDirection = connectionFirst.controllerFace
-                    ? connectionFirst.direction : AEPartLocation.INTERNAL;
-            Object connection = createGridConnection(connectionFirst.node,
-                    connectionSecond.node, connectionDirection);
-            if (connection instanceof IGridConnection) {
-                connections.add((IGridConnection) connection);
+            if (secondProxy != null) {
+                secondProxy.destroy();
             }
+            logConnectionFailure("AE2 channel spark P2P bridge", firstEndpoint.node,
+                    secondEndpoint.node, error);
+            return build;
         }
-        return connections;
+    }
+
+    private static boolean attachBridgeProxy(BridgeProxy proxy, BridgeEndpoint endpoint) {
+        if (proxy == null || endpoint == null || endpoint.node == null) {
+            return false;
+        }
+        try {
+            IGridConnection attachment = GridConnection.create(
+                    endpoint.node, proxy.node(), endpoint.direction);
+            proxy.attachments.add(attachment);
+            repathAfterConnection(endpoint.node, proxy.node());
+            return true;
+        } catch (Throwable error) {
+            logConnectionFailure("AE2 channel spark endpoint attachment",
+                    endpoint.node, proxy.node(), error);
+            return false;
+        }
+    }
+
+    private static IGridConnection createP2PGridConnection(IGridNode first,
+                                                            IGridNode second) {
+        if (first == null || second == null) {
+            return null;
+        }
+        PENDING_CHANNEL_CAPACITY.set(ChannelSparkConfig.getChannelCapacity());
+        try {
+            IGridConnection connection = AEApi.instance().grid()
+                    .createGridConnection(first, second);
+            registerConnection(connection);
+            repathAfterConnection(first, second);
+            return connection;
+        } catch (Throwable error) {
+            logConnectionFailure("AE2 P2P outer connection", first, second, error);
+            return null;
+        } finally {
+            PENDING_CHANNEL_CAPACITY.remove();
+        }
     }
 
     private static List<BridgeEndpoint[]> pairBridgeEndpoints(
