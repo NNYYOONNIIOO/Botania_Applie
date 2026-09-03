@@ -323,6 +323,46 @@ public final class ChannelSparkNetwork {
         return first.getEntityId() < second.getEntityId();
     }
 
+    private static boolean isHubLink(EntityChannelSpark first,
+                                       EntityChannelSpark second) {
+        if (first == null || second == null || first == second
+                || first.isDead || second.isDead
+                || !isPrimaryInBlock(first) || !isPrimaryInBlock(second)) {
+            return false;
+        }
+        boolean firstMain = first.isMainChannelSpark();
+        boolean secondMain = second.isMainChannelSpark();
+        if (firstMain == secondMain) {
+            return false;
+        }
+        EntityChannelSpark main = firstMain ? first : second;
+        return hasControllerEndpoint(main);
+    }
+
+    private static EntityChannelSpark findLocalMainSpark(
+            EntityChannelSpark source, List<EntityChannelSpark> nearby, double maxDistance) {
+        EntityChannelSpark main = null;
+        if (source.isMainChannelSpark() && hasControllerEndpoint(source)) {
+            main = source;
+        }
+        if (nearby == null) {
+            return main;
+        }
+        for (EntityChannelSpark candidate : nearby) {
+            if (candidate == null || candidate.isDead || candidate.world != source.world
+                    || !candidate.isMainChannelSpark()
+                    || !hasControllerEndpoint(candidate)
+                    || !isPrimaryInBlock(candidate)
+                    || source.getDistanceSq(candidate) > maxDistance) {
+                continue;
+            }
+            if (main == null || isEarlier(candidate, main)) {
+                main = candidate;
+            }
+        }
+        return main;
+    }
+
     private static boolean hasUsableEndpoint(EntityChannelSpark spark) {
         return spark != null && spark.hasTarget()
                 && !findBridgeEndpoints(spark.world, spark.getTargetPos()).isEmpty();
@@ -342,6 +382,7 @@ public final class ChannelSparkNetwork {
             for (Link link : new ArrayList<>(current.getLinks().values())) {
                 EntityChannelSpark other = link.other;
                 if (other == null || other.isDead || !isPrimaryInBlock(other)
+                        || !isHubLink(current, other)
                         || !visited.add(other.getUniqueID())) {
                     continue;
                 }
@@ -363,19 +404,26 @@ public final class ChannelSparkNetwork {
 
         removeInvalidLinks(spark);
         int radius = ChannelSparkConfig.getTransferRadius();
+        double maxDistance = (double) radius * (double) radius;
         AxisAlignedBB search = new AxisAlignedBB(
                 spark.posX - radius, spark.posY - radius, spark.posZ - radius,
                 spark.posX + radius, spark.posY + radius, spark.posZ + radius);
         List<EntityChannelSpark> nearby = spark.world.getEntitiesWithinAABB(EntityChannelSpark.class, search);
-        for (EntityChannelSpark other : nearby) {
-            if (other == spark || other.isDead || other.world != spark.world
-                    || !isPrimaryInBlock(other)) {
-                continue;
+
+        // Channel sparks form a P2P star, not a cable mesh. Only the main
+        // controller spark may be the hub; ordinary sparks never link to
+        // one another, even when they are physically adjacent.
+        EntityChannelSpark main = findLocalMainSpark(spark, nearby, maxDistance);
+        if (main != null) {
+            for (EntityChannelSpark other : nearby) {
+                if (other == null || other == main || other.isDead
+                        || other.world != spark.world || other.isMainChannelSpark()
+                        || !isPrimaryInBlock(other)
+                        || main.getDistanceSq(other) > maxDistance) {
+                    continue;
+                }
+                connect(main, other);
             }
-            if (spark.getDistanceSq(other) > (double) radius * (double) radius) {
-                continue;
-            }
-            connect(spark, other);
         }
 
         cleanupBridgeRecords();
@@ -402,7 +450,8 @@ public final class ChannelSparkNetwork {
             EntityChannelSpark other = link.other;
             if (other == null || other.isDead || other.world != spark.world
                     || spark.getDistanceSq(other) > maxDistance
-                    || !isPrimaryInBlock(other)) {
+                    || !isPrimaryInBlock(other)
+                    || !isHubLink(spark, other)) {
                 unlink(spark, other, link.connection);
             } else if (link.connection != null
                     && (!hasUsableEndpoint(spark) || !hasUsableEndpoint(other))) {
@@ -412,14 +461,14 @@ public final class ChannelSparkNetwork {
     }
 
     private static void connect(EntityChannelSpark first, EntityChannelSpark second) {
+        if (!isHubLink(first, second)) {
+            return;
+        }
         Link existing = first.getLinks().get(second.getUniqueID());
         if (existing != null) {
             return;
         }
 
-        // Keep the logical spark graph independent from AE endpoints. The
-        // whole component is reconciled below, which also supports a chain
-        // containing floating sparks between two AE networks.
         first.getLinks().put(second.getUniqueID(), new Link(second, null));
         second.getLinks().put(first.getUniqueID(), new Link(first, null));
     }
@@ -647,7 +696,8 @@ if (network == null || network.isEmpty()) {
             for (Link link : new ArrayList<>(current.getLinks().values())) {
                 EntityChannelSpark other = link.other;
                 if (other != null && !other.isDead && other.world == source.world
-                        && isPrimaryInBlock(other) && visited.add(other.getUniqueID())) {
+                        && isPrimaryInBlock(other) && isHubLink(current, other)
+                        && visited.add(other.getUniqueID())) {
                     queue.add(other);
                 }
             }
