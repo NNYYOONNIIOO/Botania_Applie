@@ -563,8 +563,9 @@ public final class ChannelSparkNetwork {
         IGridNode endpoint = tile instanceof IGridHost
                 ? findCarryingGridNodeOnHost((IGridHost) tile)
                 : findGridNodeOnObject(tile, false);
-        if (isCarryingNode(endpoint)) {
-            return endpoint;
+        IGridNode bridgeNode = selectBridgeNode(endpoint);
+        if (bridgeNode != null) {
+            return bridgeNode;
         }
 
         // If the clicked block is a machine/interface node that cannot carry
@@ -578,8 +579,9 @@ public final class ChannelSparkNetwork {
             endpoint = adjacent instanceof IGridHost
                     ? findCarryingGridNodeOnHost((IGridHost) adjacent)
                     : findGridNodeOnObject(adjacent, false);
-            if (isCarryingNode(endpoint)) {
-                return endpoint;
+            bridgeNode = selectBridgeNode(endpoint);
+            if (bridgeNode != null) {
+                return bridgeNode;
             }
         }
         return null;
@@ -855,8 +857,9 @@ public final class ChannelSparkNetwork {
         }
         try {
             IGridNode internal = host.getGridNode(AEPartLocation.INTERNAL);
-            if (isCarryingNode(internal)) {
-                return internal;
+            IGridNode bridgeNode = selectBridgeNode(internal);
+            if (bridgeNode != null) {
+                return bridgeNode;
             }
         } catch (Throwable ignored) {
         }
@@ -865,6 +868,64 @@ public final class ChannelSparkNetwork {
         // so using one here can make AE2 calculate a null direction while it
         // builds cable collision boxes. Only the host's internal node is safe.
         return null;
+    }
+
+    /**
+     * Selects a safe AE2 endpoint for a wireless bridge. Cable nodes expose
+     * their connections as physical sides. Adding an INTERNAL GridConnection
+     * to one of those nodes makes PartDenseCable treat INTERNAL as a side and
+     * eventually call getFacing() on null while building collision boxes.
+     * Use another carrying node from the same grid instead; it preserves the
+     * network without changing any cable's physical connection set.
+     */
+    private static IGridNode selectBridgeNode(IGridNode endpoint) {
+        if (!isCarryingNode(endpoint)) {
+            return null;
+        }
+        if (!isCableNode(endpoint)) {
+            return endpoint;
+        }
+        return findNonCableCarryingNodeFromGrid(endpoint);
+    }
+
+    private static IGridNode findNonCableCarryingNodeFromGrid(IGridNode endpoint) {
+        IGridNode fallback = null;
+        try {
+            if (endpoint.getGrid() == null) {
+                return null;
+            }
+            for (IGridNode candidate : endpoint.getGrid().getNodes()) {
+                if (!isCarryingNode(candidate) || isCableNode(candidate)) {
+                    continue;
+                }
+                if (isPreferredCarryingNode(candidate)) {
+                    return candidate;
+                }
+                if (fallback == null) {
+                    fallback = candidate;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return fallback;
+    }
+
+    private static boolean isCableNode(IGridNode node) {
+        if (node == null) {
+            return false;
+        }
+        try {
+            Object machine = node.getGridBlock().getMachine();
+            if (machine == null) {
+                return false;
+            }
+            String name = machine.getClass().getName();
+            return machine instanceof appeng.tile.networking.TileCableBus
+                    || name.contains("CableBus")
+                    || name.contains("Cable");
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     private static Method findMethod(Class<?> type, String name, Class<?>... parameterTypes) {
