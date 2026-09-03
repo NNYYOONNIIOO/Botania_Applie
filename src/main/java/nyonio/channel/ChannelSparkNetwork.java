@@ -54,6 +54,12 @@ public final class ChannelSparkNetwork {
     private static final Map<BridgeKey, BridgeRecord> AE_BRIDGES = new HashMap<>();
     private static final ThreadLocal<Integer> PENDING_CHANNEL_CAPACITY = new ThreadLocal<>();
 
+    /** Deterministic AE2 controller-face order: +X,+Y,+Z,-X,-Y,-Z. */
+    private static final EnumFacing[] CHANNEL_DIRECTION_ORDER = {
+            EnumFacing.EAST, EnumFacing.UP, EnumFacing.SOUTH,
+            EnumFacing.WEST, EnumFacing.DOWN, EnumFacing.NORTH
+    };
+
     private ChannelSparkNetwork() {
     }
 
@@ -116,16 +122,28 @@ public final class ChannelSparkNetwork {
         }
     }
 
+    private static final class BridgeEndpoint {
+        private final IGridNode node;
+        private final AEPartLocation direction;
+
+        private BridgeEndpoint(IGridNode node, AEPartLocation direction) {
+            this.node = node;
+            this.direction = direction;
+        }
+    }
+
     private static final class BridgeRecord {
         private final EntityChannelSpark first;
         private final EntityChannelSpark second;
-        private final IGridConnection connection;
+        private final List<IGridConnection> connections;
+        private final int expectedConnections;
 
         private BridgeRecord(EntityChannelSpark first, EntityChannelSpark second,
-                             IGridConnection connection) {
+                             List<IGridConnection> connections, int expectedConnections) {
             this.first = first;
             this.second = second;
-            this.connection = connection;
+            this.connections = new ArrayList<>(connections);
+            this.expectedConnections = expectedConnections;
         }
     }
 
@@ -169,7 +187,7 @@ public final class ChannelSparkNetwork {
 
     private static boolean hasUsableEndpoint(EntityChannelSpark spark) {
         return spark != null && spark.hasTarget()
-                && findBridgeNode(spark.world, spark.getTargetPos()) != null;
+                && !findBridgeEndpoints(spark.world, spark.getTargetPos()).isEmpty();
     }
 
     public static void showNetwork(EntityPlayer player, EntityChannelSpark source) {
@@ -272,7 +290,7 @@ public final class ChannelSparkNetwork {
         List<EntityChannelSpark> network = collectLogicalNetwork(source);
         List<EntityChannelSpark> endpointSparks = new ArrayList<>();
         for (EntityChannelSpark spark : network) {
-            if (spark.hasTarget() && findBridgeNode(spark.world, spark.getTargetPos()) != null) {
+            if (hasUsableEndpoint(spark)) {
                 endpointSparks.add(spark);
             }
         }
@@ -284,18 +302,21 @@ public final class ChannelSparkNetwork {
         for (int index = 1; index < endpointSparks.size(); index++) {
             EntityChannelSpark other = endpointSparks.get(index);
             BridgeKey key = new BridgeKey(anchor.getUniqueID(), other.getUniqueID());
+            int expectedConnections = expectedBridgeConnectionCount(anchor, other);
             BridgeRecord existing = AE_BRIDGES.get(key);
             if (existing != null) {
-                if (isConnectionAlive(existing.connection)) {
+                if (existing.expectedConnections >= expectedConnections
+                        && areConnectionsAlive(existing.connections)) {
                     continue;
                 }
+                destroyConnections(existing.connections);
                 AE_BRIDGES.remove(key);
             }
 
-            Object connection = createGridConnectionIfPossible(anchor, other);
-            if (connection instanceof IGridConnection) {
-                AE_BRIDGES.put(key, new BridgeRecord(anchor, other,
-                        (IGridConnection) connection));
+            List<IGridConnection> connections = createGridConnectionsIfPossible(anchor, other);
+            if (!connections.isEmpty()) {
+                AE_BRIDGES.put(key, new BridgeRecord(anchor, other, connections,
+                        expectedConnections));
             }
         }
     }
@@ -338,9 +359,9 @@ public final class ChannelSparkNetwork {
                     && record.first.world == record.second.world
                     && isPrimaryInBlock(record.first) && isPrimaryInBlock(record.second)
                     && areLogicallyConnected(record.first, record.second)
-                    && isConnectionAlive(record.connection);
+                    && areConnectionsAlive(record.connections);
             if (!valid) {
-                destroyConnection(record.connection);
+                destroyConnections(record.connections);
                 iterator.remove();
             }
         }
@@ -354,6 +375,27 @@ public final class ChannelSparkNetwork {
             }
         }
         return false;
+    }
+
+    private static boolean areConnectionsAlive(List<IGridConnection> connections) {
+        if (connections == null || connections.isEmpty()) {
+            return false;
+        }
+        for (IGridConnection connection : connections) {
+            if (!isConnectionAlive(connection)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static void destroyConnections(List<IGridConnection> connections) {
+        if (connections == null) {
+            return;
+        }
+        for (IGridConnection connection : new ArrayList<>(connections)) {
+            destroyConnection(connection);
+        }
     }
 
     private static boolean isConnectionAlive(IGridConnection connection) {
@@ -392,34 +434,156 @@ public final class ChannelSparkNetwork {
         while (iterator.hasNext()) {
             BridgeRecord record = iterator.next().getValue();
             if (record.first == spark || record.second == spark) {
-                destroyConnection(record.connection);
+                destroyConnections(record.connections);
                 iterator.remove();
             }
         }
     }
 
-    private static Object createGridConnectionIfPossible(EntityChannelSpark first, EntityChannelSpark second) {
-        if (!hasUsableEndpoint(first) || !hasUsableEndpoint(second)) {
-            return null;
+    private static int expectedBridgeConnectionCount(
+            EntityChannelSpark first, EntityChannelSpark second) {
+        return pairBridgeEndpoints(
+                findBridgeEndpoints(first.world, first.getTargetPos()),
+                findBridgeEndpoints(second.world, second.getTargetPos())).size();
+    }
+
+    private static List<IGridConnection> createGridConnectionsIfPossible(
+            EntityChannelSpark first, EntityChannelSpark second) {
+        List<BridgeEndpoint> firstEndpoints =
+                findBridgeEndpoints(first.world, first.getTargetPos());
+        List<BridgeEndpoint> secondEndpoints =
+                findBridgeEndpoints(second.world, second.getTargetPos());
+        if (firstEndpoints.isEmpty() || secondEndpoints.isEmpty()) {
+            return Collections.emptyList();
         }
 
-        IGridNode firstNode = findBridgeNode(first.world, first.getTargetPos());
-        IGridNode secondNode = findBridgeNode(second.world, second.getTargetPos());
-        if (firstNode == null || secondNode == null || firstNode == secondNode) {
-            return null;
+        List<BridgeEndpoint[]> pairs = pairBridgeEndpoints(firstEndpoints, secondEndpoints);
+        if (pairs.isEmpty()) {
+            return Collections.emptyList();
         }
 
+        // Snapshot the grids before the first connection merges them. The
+        // remaining face pairs must still be created in the requested order.
+        Map<IGridNode, Object> initialGrids = new IdentityHashMap<>();
+        for (BridgeEndpoint endpoint : firstEndpoints) {
+            initialGrids.put(endpoint.node, safeGrid(endpoint.node));
+        }
+        for (BridgeEndpoint endpoint : secondEndpoints) {
+            initialGrids.put(endpoint.node, safeGrid(endpoint.node));
+        }
+
+        boolean differentNetworks = false;
+        for (BridgeEndpoint[] pair : pairs) {
+            Object firstGrid = initialGrids.get(pair[0].node);
+            Object secondGrid = initialGrids.get(pair[1].node);
+            if (firstGrid != null && secondGrid != null && firstGrid != secondGrid) {
+                differentNetworks = true;
+                break;
+            }
+        }
+        if (!differentNetworks) {
+            return Collections.emptyList();
+        }
+
+        List<IGridConnection> connections = new ArrayList<>();
+        for (BridgeEndpoint[] pair : pairs) {
+            BridgeEndpoint firstEndpoint = pair[0];
+            BridgeEndpoint secondEndpoint = pair[1];
+            if (firstEndpoint.node == secondEndpoint.node
+                    || hasDirectConnection(firstEndpoint.node, secondEndpoint.node)) {
+                continue;
+            }
+
+            Object firstGrid = initialGrids.get(firstEndpoint.node);
+            Object secondGrid = initialGrids.get(secondEndpoint.node);
+            if (firstGrid == null || secondGrid == null || firstGrid == secondGrid) {
+                continue;
+            }
+
+            // Keep every wireless connection INTERNAL. The selected endpoint
+            // node carries the controller face's channel path, while INTERNAL
+            // prevents AE2 cable geometry from treating the bridge as a side.
+            Object connection = createGridConnection(firstEndpoint.node,
+                    secondEndpoint.node, AEPartLocation.INTERNAL);
+            if (connection instanceof IGridConnection) {
+                connections.add((IGridConnection) connection);
+            }
+        }
+        return connections;
+    }
+
+    private static List<BridgeEndpoint[]> pairBridgeEndpoints(
+            List<BridgeEndpoint> first, List<BridgeEndpoint> second) {
+        List<BridgeEndpoint[]> pairs = new ArrayList<>();
+        if (first.isEmpty() || second.isEmpty()) {
+            return pairs;
+        }
+
+        // Both inputs are already ordered +X,+Y,+Z,-X,-Y,-Z. Matching equal
+        // faces gives deterministic controller channel consumption.
+        if (first.size() == 1 && second.size() > 1) {
+            for (BridgeEndpoint endpoint : second) {
+                pairs.add(new BridgeEndpoint[]{first.get(0), endpoint});
+            }
+            return pairs;
+        }
+        if (second.size() == 1 && first.size() > 1) {
+            for (BridgeEndpoint endpoint : first) {
+                pairs.add(new BridgeEndpoint[]{endpoint, second.get(0)});
+            }
+            return pairs;
+        }
+
+        boolean[] usedSecond = new boolean[second.size()];
+        for (int index = 0; index < first.size(); index++) {
+            BridgeEndpoint firstEndpoint = first.get(index);
+            int selected = -1;
+            for (int other = 0; other < second.size(); other++) {
+                if (!usedSecond[other]
+                        && second.get(other).direction == firstEndpoint.direction) {
+                    selected = other;
+                    break;
+                }
+            }
+            if (selected < 0) {
+                selected = index < second.size() ? index : index % second.size();
+            }
+            usedSecond[selected] = true;
+            pairs.add(new BridgeEndpoint[]{firstEndpoint, second.get(selected)});
+        }
+
+        if (second.size() > first.size()) {
+            BridgeEndpoint fallback = first.get(first.size() - 1);
+            for (int index = 0; index < second.size(); index++) {
+                if (!usedSecond[index]) {
+                    pairs.add(new BridgeEndpoint[]{fallback, second.get(index)});
+                }
+            }
+        }
+        return pairs;
+    }
+
+    private static Object safeGrid(IGridNode node) {
         try {
-            if (firstNode.getGrid() != null && firstNode.getGrid() == secondNode.getGrid()) {
-                return null;
+            return node == null ? null : node.getGrid();
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static boolean hasDirectConnection(IGridNode first, IGridNode second) {
+        if (first == null || second == null) {
+            return false;
+        }
+        try {
+            for (IGridConnection connection : first.getConnections()) {
+                if (connection != null && connection.getOtherSide(first) == second) {
+                    return true;
+                }
             }
         } catch (Throwable ignored) {
         }
-
-        // A wireless bridge has no physical side. Keep it internal while
-        // leaving it attached to the cable node so AE2 pathing and channel
-        // accounting still see the bridge.
-        return createGridConnection(firstNode, secondNode, AEPartLocation.INTERNAL);
+        return false;
     }
 
     private static AEPartLocation determineBridgeDirection(EntityChannelSpark first,
@@ -595,6 +759,86 @@ public final class ChannelSparkNetwork {
      * For cable buses, use the center/carrying node first and only fall back to
      * a host node when no carrying node is exposed.
      */
+    /**
+     * Gets all channel-bearing nodes exposed by the block below a spark.
+     * Controller faces are collected in +X,+Y,+Z,-X,-Y,-Z order. Cable buses
+     * collapse to one carrying node because all of their faces share a path.
+     */
+    private static List<BridgeEndpoint> findBridgeEndpoints(World world, BlockPos pos) {
+        List<BridgeEndpoint> endpoints = new ArrayList<>();
+        if (world == null || pos == null) {
+            return endpoints;
+        }
+
+        TileEntity tile = world.getTileEntity(pos);
+        if (tile instanceof IGridHost) {
+            IGridHost host = (IGridHost) tile;
+            for (EnumFacing facing : CHANNEL_DIRECTION_ORDER) {
+                AEPartLocation direction = AEPartLocation.fromFacing(facing);
+                IGridNode node = null;
+                try {
+                    node = host.getGridNode(direction);
+                } catch (Throwable ignored) {
+                }
+                addBridgeEndpoint(endpoints, node, direction);
+            }
+
+            if (endpoints.isEmpty()) {
+                IGridNode internal = null;
+                try {
+                    internal = host.getGridNode(AEPartLocation.INTERNAL);
+                } catch (Throwable ignored) {
+                }
+                addBridgeEndpoint(endpoints, internal, AEPartLocation.INTERNAL);
+            }
+            if (!endpoints.isEmpty()) {
+                return collapseCableEndpoints(endpoints);
+            }
+        } else {
+            addBridgeEndpoint(endpoints, findGridNodeOnObject(tile, false),
+                    AEPartLocation.INTERNAL);
+        }
+
+        // Keep the adjacent-cable fallback for an ordinary block without a
+        // usable host node, using the same deterministic face order.
+        for (EnumFacing facing : CHANNEL_DIRECTION_ORDER) {
+            TileEntity adjacent = world.getTileEntity(pos.offset(facing));
+            addBridgeEndpoint(endpoints, findGridNodeOnObject(adjacent, false),
+                    AEPartLocation.fromFacing(facing));
+        }
+        return collapseCableEndpoints(endpoints);
+    }
+
+    private static List<BridgeEndpoint> collapseCableEndpoints(
+            List<BridgeEndpoint> endpoints) {
+        BridgeEndpoint firstCable = null;
+        for (BridgeEndpoint endpoint : endpoints) {
+            if (isCableNode(endpoint.node)) {
+                firstCable = endpoint;
+                break;
+            }
+        }
+        if (firstCable == null) {
+            return endpoints;
+        }
+        return Collections.singletonList(
+                new BridgeEndpoint(firstCable.node, AEPartLocation.INTERNAL));
+    }
+
+    private static void addBridgeEndpoint(List<BridgeEndpoint> endpoints,
+                                          IGridNode node,
+                                          AEPartLocation direction) {
+        if (!isCarryingNode(node)) {
+            return;
+        }
+        for (BridgeEndpoint existing : endpoints) {
+            if (existing.node == node) {
+                return;
+            }
+        }
+        endpoints.add(new BridgeEndpoint(node, direction));
+    }
+
     private static IGridNode findBridgeNode(World world, BlockPos pos) {
         if (world == null || pos == null) {
             return null;
