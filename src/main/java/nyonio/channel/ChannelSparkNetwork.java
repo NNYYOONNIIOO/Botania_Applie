@@ -860,15 +860,10 @@ public final class ChannelSparkNetwork {
             }
         } catch (Throwable ignored) {
         }
-        for (AEPartLocation location : AEPartLocation.SIDE_LOCATIONS) {
-            try {
-                IGridNode node = host.getGridNode(location);
-                if (isCarryingNode(node)) {
-                    return node;
-                }
-            } catch (Throwable ignored) {
-            }
-        }
+        // A side node has a meaningful direction only when it belongs to the
+        // part that owns that side. A wireless bridge has no physical side,
+        // so using one here can make AE2 calculate a null direction while it
+        // builds cable collision boxes. Only the host's internal node is safe.
         return null;
     }
 
@@ -903,20 +898,11 @@ public final class ChannelSparkNetwork {
     }
 
     private static Object createGridConnection(IGridNode first, IGridNode second) {
-        try {
-            PENDING_CHANNEL_CAPACITY.set(ChannelSparkConfig.getChannelCapacity());
-            try {
-                IGridConnection connection = AEApi.instance().grid().createGridConnection(first, second);
-                registerConnection(connection);
-                repathAfterConnection(first, second);
-                return connection;
-            } finally {
-                PENDING_CHANNEL_CAPACITY.remove();
-            }
-        } catch (Throwable error) {
-            logConnectionFailure("AE API", first, second, error);
-        }
-
+        // AEApi's convenience method does not preserve an explicit part
+        // location on every AE2 Extended Life build. When it creates a
+        // connection without a location, dense-cable inspection can receive a
+        // null facing and crash while TOP is probing the cable. Prefer the
+        // concrete factory with INTERNAL for both wireless endpoints.
         try {
             Class<?> connectionClass = Class.forName(GRID_CONNECTION_CLASS);
             Method factory = connectionClass.getDeclaredMethod("create", IGridNode.class, IGridNode.class, AEPartLocation.class);
@@ -933,7 +919,21 @@ public final class ChannelSparkNetwork {
                 PENDING_CHANNEL_CAPACITY.remove();
             }
         } catch (Throwable error) {
-            logConnectionFailure("GridConnection reflection", first, second, error);
+            logConnectionFailure("GridConnection internal factory", first, second, error);
+        }
+
+        try {
+            PENDING_CHANNEL_CAPACITY.set(ChannelSparkConfig.getChannelCapacity());
+            try {
+                IGridConnection connection = AEApi.instance().grid().createGridConnection(first, second);
+                registerConnection(connection);
+                repathAfterConnection(first, second);
+                return connection;
+            } finally {
+                PENDING_CHANNEL_CAPACITY.remove();
+            }
+        } catch (Throwable error) {
+            logConnectionFailure("AE API", first, second, error);
         }
         return null;
     }
