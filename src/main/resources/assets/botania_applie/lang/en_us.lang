@@ -43,3 +43,5 @@ item.botania_applie.fluixpool_card.name=Fluix Mana Pool Card
 item.botania_applie.channel_spark.name=Channel Spark
 item.botania_applie:channel_spark.name=Channel Spark
 botania_applie:channel_spark=Channel Spark
+entity.botania_applie.channel_spark.name=Channel Spark
+entity.botania_applie:channel_spark.name=Channel Spark
