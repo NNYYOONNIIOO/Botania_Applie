@@ -398,12 +398,13 @@ public final class ChannelSparkNetwork {
                 return false;
             }
             for (int index = 0; index < controllerFaces.size(); index++) {
-                AEPartLocation face = controllerFaces.get(index);
-                if (isControllerFaceUsed(controller, face)
-                        || safeGrid(controllerChannelProxies.get(index).getNode())
-                                != controllerGrid
-                        || safeGrid(controllerOuterProxies.get(index).getNode())
-                                != controllerGrid) {
+                IGridNode channelNode = controllerChannelProxies.get(index).getNode();
+                IGridNode outerNode = controllerOuterProxies.get(index).getNode();
+                if (channelNode == null || outerNode == null
+                        || safeGrid(channelNode) != controllerGrid
+                        || safeGrid(outerNode) != controllerGrid
+                        || !hasDirectConnection(controller, channelNode)
+                        || !hasDirectConnection(controller, outerNode)) {
                     return false;
                 }
             }
@@ -430,6 +431,8 @@ public final class ChannelSparkNetwork {
                 return false;
             }
             if (endpoint.controllerFace) {
+                // Physical controller faces can be occupied after creation;
+                // reuse the bridge based on its own live input connections.
                 return hasControllerInputsInGrid(endpoint.node);
             }
             return innerNode() != null && node() != null
