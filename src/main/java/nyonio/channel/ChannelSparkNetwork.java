@@ -964,7 +964,13 @@ if (network == null || network.isEmpty()) {
         try {
             secondProxy = new BridgeProxy(secondEndpoint, second.world,
                     second.getTargetPos(), second);
-            if (!attachBridgeProxy(secondProxy, secondEndpoint)) {
+            // An output spark's local P2P proxy belongs to the shared P2P
+            // backbone, not to the remote network below that output. The
+            // remote network is exposed only by secondProxy.outerProxy via
+            // its world-facing DOWN side. Attaching this inner node directly
+            // to secondEndpoint would merge every output network into the
+            // dense-cable topology shown in the current screenshot.
+            if (!attachInnerProxyToNetwork(secondProxy, mainProxy.innerNode())) {
                 secondProxy.destroy();
                 return build;
             }
@@ -1031,6 +1037,29 @@ if (network == null || network.isEmpty()) {
         } catch (Throwable error) {
             logConnectionFailure("AE2 channel spark endpoint attachment",
                     endpoint.node, proxy.innerNode(), error);
+            return false;
+        }
+    }
+
+    private static boolean attachInnerProxyToNetwork(BridgeProxy proxy,
+                                                      IGridNode hostNode) {
+        if (proxy == null || hostNode == null || proxy.innerNode() == null
+                || safeGrid(hostNode) == null) {
+            return false;
+        }
+        try {
+            // This is the equivalent of a P2P part's regular getProxy()
+            // joining the cable bus that hosts the tunnel. It is deliberately
+            // not registered as wireless: only the outer-to-outer edge is the
+            // wireless P2P capacity edge.
+            IGridConnection connection = GridConnection.create(
+                    hostNode, proxy.innerNode(), AEPartLocation.INTERNAL);
+            proxy.attachments.add(connection);
+            repathAfterConnection(hostNode, proxy.innerNode());
+            return safeGrid(proxy.innerNode()) == safeGrid(hostNode);
+        } catch (Throwable error) {
+            logConnectionFailure("AE2 channel spark P2P backbone attachment",
+                    hostNode, proxy.innerNode(), error);
             return false;
         }
     }
