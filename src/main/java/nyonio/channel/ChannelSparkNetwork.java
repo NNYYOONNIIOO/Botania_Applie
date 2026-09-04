@@ -1002,24 +1002,21 @@ if (network == null || network.isEmpty()) {
             // the dense P2P endpoint. Using a world-facing outer connection
             // here creates visible cable paths and produces the screenshot's
             // cable-like topology.
-            // Keep the carrying proxy as side A. A controller node has
-            // CANNOT_CARRY, so making it side A gives AE2 no controller route
-            // and prevents channels from reaching the spark. Controller faces
-            // are logical channel allocators, not the spark's physical EAST
-            // connection: use an INTERNAL edge for the selected controller
-            // face. The outer world node still discovers the target block
-            // through DOWN. Ordinary cable endpoints retain their physical
-            // edge from the spark toward the block below.
+            // AE2 creates the local P2P-side connection with the target
+            // network node as side A and the proxy as side B. Controller faces
+            // select channel capacity but do not define the spark's rendered
+            // geometry, so keep them logical with an INTERNAL edge. For an
+            // ordinary target, use the physical target-to-spark direction.
             AEPartLocation localDirection = endpoint.controllerFace
                     ? AEPartLocation.INTERNAL
                     : proxy.attachmentDirection == null
                     || proxy.attachmentDirection == AEPartLocation.INTERNAL
-                    ? AEPartLocation.DOWN
-                    : proxy.attachmentDirection.getOpposite();
+                    ? AEPartLocation.UP
+                    : proxy.attachmentDirection;
             IGridConnection localAttachment = GridConnection.create(
-                    proxy.innerNode(), endpoint.node, localDirection);
+                    endpoint.node, proxy.innerNode(), localDirection);
             proxy.attachments.add(localAttachment);
-            repathAfterConnection(proxy.innerNode(), endpoint.node);
+            repathAfterConnection(endpoint.node, proxy.innerNode());
 
             // The outer node is world-accessible and may finish discovering
             // the adjacent controller on the next AE2 pathing tick. The
