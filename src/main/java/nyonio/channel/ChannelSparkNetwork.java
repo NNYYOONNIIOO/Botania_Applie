@@ -1002,15 +1002,19 @@ if (network == null || network.isEmpty()) {
             // the dense P2P endpoint. Using a world-facing outer connection
             // here creates visible cable paths and produces the screenshot's
             // cable-like topology.
-            // endpoint.direction identifies the controller face whose channel
-            // capacity is being used. It must not determine the geometry of
-            // the synthetic connection: the proxy is physically above the
-            // target, so the connection always leaves the target via UP.
-            AEPartLocation localDirection = proxy.attachmentDirection;
+            // Keep the carrying proxy as side A. A controller node has
+            // CANNOT_CARRY, so making it side A gives AE2 no controller route
+            // and prevents channels from reaching the spark. The proxy is
+            // above the target, therefore this edge points DOWN from the
+            // spark toward the target block.
+            AEPartLocation localDirection = proxy.attachmentDirection == null
+                    || proxy.attachmentDirection == AEPartLocation.INTERNAL
+                    ? AEPartLocation.DOWN
+                    : proxy.attachmentDirection.getOpposite();
             IGridConnection localAttachment = GridConnection.create(
-                    endpoint.node, proxy.innerNode(), localDirection);
+                    proxy.innerNode(), endpoint.node, localDirection);
             proxy.attachments.add(localAttachment);
-            repathAfterConnection(endpoint.node, proxy.innerNode());
+            repathAfterConnection(proxy.innerNode(), endpoint.node);
 
             // The outer node is world-accessible and may finish discovering
             // the adjacent controller on the next AE2 pathing tick. The
