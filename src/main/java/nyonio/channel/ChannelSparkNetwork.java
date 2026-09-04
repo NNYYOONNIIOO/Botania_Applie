@@ -220,6 +220,7 @@ public final class ChannelSparkNetwork {
         private final List<AENetworkProxy> controllerOuterProxies =
                 new ArrayList<>();
         private final List<AEPartLocation> controllerFaces = new ArrayList<>();
+        private int nextControllerFace;
 
         private BridgeProxy(BridgeEndpoint endpoint, World world,
                             BlockPos targetPos, EntityChannelSpark spark) {
@@ -229,8 +230,10 @@ public final class ChannelSparkNetwork {
             this.attachmentDirection = physicalDirection == null
                     || physicalDirection == AEPartLocation.INTERNAL
                     ? AEPartLocation.UP : physicalDirection;
-            BlockPos attachedPos = targetPos == null
-                    ? getEndpointBlockPos(endpoint, targetPos) : targetPos;
+            // Put the external node directly above the selected AE endpoint.
+            // Using the spark's target position can make DOWN discover a
+            // different cable/device, leaving the output outside the grid.
+            BlockPos attachedPos = getEndpointBlockPos(endpoint, targetPos);
             if (attachedPos == null) {
                 attachedPos = new BlockPos(0, 0, 0);
             }
@@ -329,12 +332,54 @@ public final class ChannelSparkNetwork {
             return proxy;
         }
 
+        private boolean ensureControllerFaceConnection(
+                IGridNode controller, AENetworkProxy proxy,
+                AEPartLocation face) {
+            if (controller == null || proxy == null || proxy.getNode() == null
+                    || face == null) {
+                return false;
+            }
+            if (hasDirectConnection(controller, proxy.getNode())) {
+                return true;
+            }
+            try {
+                IGridConnection connection = GridConnection.create(
+                        controller, proxy.getNode(), face);
+                if (connection == null) {
+                    return false;
+                }
+                attachments.add(connection);
+                repathAfterConnection(controller, proxy.getNode());
+                return hasDirectConnection(controller, proxy.getNode());
+            } catch (Throwable error) {
+                logConnectionFailure("controller face input attachment",
+                        controller, proxy.getNode(), error);
+                return false;
+            }
+        }
+
         private int controllerChannelCount() {
             return controllerChannelProxies.size();
         }
 
         private List<AENetworkProxy> getControllerOuterProxies() {
             return controllerOuterProxies;
+        }
+
+        /**
+         * Allocate one source face for one remote spark output. A remote
+         * spark is a single P2P output, so connecting it to every controller
+         * face creates a fan of duplicate links instead of a single pair.
+         * Cycling in the declared face order keeps all unused controller
+         * faces available as the network grows.
+         */
+        private AENetworkProxy acquireControllerOuterProxy() {
+            if (controllerOuterProxies.isEmpty()) {
+                return null;
+            }
+            int index = nextControllerFace % controllerOuterProxies.size();
+            nextControllerFace = (index + 1) % controllerOuterProxies.size();
+            return controllerOuterProxies.get(index);
         }
 
         private boolean createControllerChannelInputs(IGridNode controller) {
@@ -382,8 +427,8 @@ public final class ChannelSparkNetwork {
                 controllerChannelProxies.add(channelProxy);
                 controllerOuterProxies.add(outerProxy);
                 controllerFaces.add(face);
-                if (!hasDirectConnection(controller, channelProxy.getNode())
-                        || !hasDirectConnection(controller, outerProxy.getNode())) {
+                if (!ensureControllerFaceConnection(controller, channelProxy, face)
+                        || !ensureControllerFaceConnection(controller, outerProxy, face)) {
                     destroyControllerInputs();
                     return false;
                 }
@@ -427,6 +472,7 @@ public final class ChannelSparkNetwork {
             controllerChannelProxies.clear();
             controllerOuterProxies.clear();
             controllerFaces.clear();
+            nextControllerFace = 0;
             destroyConnections(attachments);
             attachments.clear();
         }
@@ -458,6 +504,7 @@ public final class ChannelSparkNetwork {
             controllerChannelProxies.clear();
             controllerOuterProxies.clear();
             controllerFaces.clear();
+            nextControllerFace = 0;
             outerProxy.invalidate();
             innerProxy.invalidate();
         }
@@ -800,7 +847,8 @@ public final class ChannelSparkNetwork {
         removeUndesiredBridges(main, endpointSparks);
         for (EntityChannelSpark other : endpointSparks) {
             BridgeKey key = new BridgeKey(main.getUniqueID(), other.getUniqueID());
-            int expectedConnections = mainProxy.controllerChannelCount();
+        // Each main/output spark pair owns exactly one P2P connection.
+        int expectedConnections = 1;
             BridgeRecord existing = AE_BRIDGES.get(key);
             if (existing != null) {
                 if (existing.expectedConnections >= expectedConnections
@@ -1129,24 +1177,25 @@ if (network == null || network.isEmpty()) {
                 return build;
             }
 
-            // Every output spark connects to every controller-face input.
-            // The six faces are the source channel pool; they do not limit
-            // the number of output sparks in the logical spark network.
-            for (AENetworkProxy inputOuter : mainProxy.getControllerOuterProxies()) {
-                if (inputOuter == null || inputOuter.getNode() == null) {
-                    destroyConnections(build.connections);
-                    secondProxy.destroy();
-                    return new BridgeBuild();
-                }
-                IGridConnection connection = createP2PGridConnection(
-                        inputOuter.getNode(), secondProxy.outerNode());
-                if (connection == null) {
-                    destroyConnections(build.connections);
-                    secondProxy.destroy();
-                    return new BridgeBuild();
-                }
-                build.connections.add(connection);
+            // One remote spark is one P2P output. Allocate it to exactly one
+            // controller-face input in +X,+Y,+Z,-X,-Y,-Z order. Connecting
+            // the same output to every input creates six parallel links for
+            // one spark pair, produces the visual fan, and consumes the
+            // channel path incorrectly.
+            AENetworkProxy inputOuter = mainProxy.acquireControllerOuterProxy();
+            if (inputOuter == null || inputOuter.getNode() == null) {
+                destroyConnections(build.connections);
+                secondProxy.destroy();
+                return new BridgeBuild();
             }
+            IGridConnection connection = createP2PGridConnection(
+                    inputOuter.getNode(), secondProxy.outerNode());
+            if (connection == null) {
+                destroyConnections(build.connections);
+                secondProxy.destroy();
+                return new BridgeBuild();
+            }
+            build.connections.add(connection);
             build.proxies.add(secondProxy);
             return build;
         } catch (Throwable error) {
@@ -1212,13 +1261,33 @@ if (network == null || network.isEmpty()) {
             proxy.attachments.add(localConnection);
             repathAfterConnection(endpoint.node, proxy.innerNode());
 
-            // outerProxy is a world node at targetPos.up() with DOWN as its
-            // only valid side, matching PartP2PTunnelME.outerProxy. It should
-            // already have discovered the block directly below the spark.
+            // The outer proxy normally discovers the endpoint through its
+            // DOWN side. If a grid implementation does not rescan the
+            // synthetic host, attach it using the endpoint's real face so
+            // the P2P output still belongs to the destination network.
             if (safeGrid(proxy.outerNode()) != safeGrid(endpoint.node)) {
-                return false;
+                AEPartLocation face = endpoint.direction;
+                if (face == null
+                        || (face == AEPartLocation.INTERNAL
+                        && isCableNode(endpoint.node))) {
+                    return false;
+                }
+                try {
+                    IGridConnection outerConnection = GridConnection.create(
+                            endpoint.node, proxy.outerNode(), face);
+                    if (outerConnection == null) {
+                        return false;
+                    }
+                    proxy.attachments.add(outerConnection);
+                    repathAfterConnection(endpoint.node, proxy.outerNode());
+                } catch (Throwable error) {
+                    logConnectionFailure(
+                            "channel spark output outer attachment",
+                            endpoint.node, proxy.outerNode(), error);
+                    return false;
+                }
             }
-            return true;
+            return safeGrid(proxy.outerNode()) == safeGrid(endpoint.node);
         } catch (Throwable error) {
             logConnectionFailure("AE2 channel spark output endpoint attachment",
                     endpoint.node, proxy.innerNode(), error);
