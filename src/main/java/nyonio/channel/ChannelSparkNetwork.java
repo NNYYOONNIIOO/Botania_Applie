@@ -969,7 +969,7 @@ if (network == null || network.isEmpty()) {
             // network, just like a native ME-P2P output part. Only the outer
             // nodes form the wireless P2P edge; sharing mainProxy.innerNode()
             // would turn all output branches into one dense cable path.
-            if (!attachBridgeProxy(secondProxy, secondEndpoint)) {
+            if (!attachOutputProxy(secondProxy, mainProxy.innerNode())) {
                 secondProxy.destroy();
                 return build;
             }
@@ -1045,6 +1045,29 @@ if (network == null || network.isEmpty()) {
         } catch (Throwable error) {
             logConnectionFailure("AE2 channel spark endpoint attachment",
                     endpoint.node, proxy.innerNode(), error);
+            return false;
+        }
+    }
+
+    private static boolean attachOutputProxy(BridgeProxy proxy,
+                                              IGridNode backboneNode) {
+        if (proxy == null || backboneNode == null || proxy.innerNode() == null
+                || proxy.node() == null || safeGrid(backboneNode) == null) {
+            return false;
+        }
+        try {
+            // Native P2P outputs use their regular proxy on the tunnel's
+            // local/backbone grid. Their outer proxy is the only node that
+            // reaches the remote network and participates in the P2P edge.
+            IGridConnection connection = GridConnection.create(
+                    backboneNode, proxy.innerNode(), AEPartLocation.INTERNAL);
+            proxy.attachments.add(connection);
+            repathAfterConnection(backboneNode, proxy.innerNode());
+            return safeGrid(proxy.innerNode()) == safeGrid(backboneNode)
+                    && safeGrid(proxy.node()) != null;
+        } catch (Throwable error) {
+            logConnectionFailure("AE2 channel spark output backbone", backboneNode,
+                    proxy.innerNode(), error);
             return false;
         }
     }
