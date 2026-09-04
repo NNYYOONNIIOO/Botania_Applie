@@ -725,6 +725,53 @@ public final class ChannelSparkNetwork {
                 && !findBridgeEndpoints(spark.world, spark.getTargetPos()).isEmpty();
     }
 
+    /**
+     * A Botania spark network may contain many channel sparks attached to
+     * different points of the same AE2 grid. They are one P2P destination,
+     * not one P2P tunnel per spark. Keep the earliest valid spark as the
+     * representative for each destination grid, so one main/target network
+     * pair can never produce the fan of duplicate links shown by AE2 viewers.
+     */
+    private static List<EntityChannelSpark> collectUniqueEndpointSparks(
+            EntityChannelSpark main, List<EntityChannelSpark> network,
+            BridgeProxy mainProxy) {
+        List<EntityChannelSpark> result = new ArrayList<>();
+        if (main == null || network == null || mainProxy == null) {
+            return result;
+        }
+        Object sourceGrid = safeGrid(mainProxy.outerNode());
+        IdentityHashMap<Object, EntityChannelSpark> representatives =
+                new IdentityHashMap<>();
+        for (EntityChannelSpark spark : network) {
+            if (spark == null || spark == main || spark.isMainChannelSpark()
+                    || !hasUsableEndpoint(spark)) {
+                continue;
+            }
+            BridgeEndpoint endpoint = selectP2PEndpoint(
+                    findBridgeEndpoints(spark.world, spark.getTargetPos()), spark);
+            Object targetGrid = endpoint == null ? null : safeGrid(endpoint.node);
+            if (targetGrid == null || targetGrid == sourceGrid) {
+                continue;
+            }
+            EntityChannelSpark previous = representatives.get(targetGrid);
+            if (previous == null || isEarlier(spark, previous)) {
+                representatives.put(targetGrid, spark);
+            }
+        }
+        result.addAll(representatives.values());
+        Collections.sort(result, new Comparator<EntityChannelSpark>() {
+            @Override
+            public int compare(EntityChannelSpark first, EntityChannelSpark second) {
+                if (first.getPlacementOrder() != second.getPlacementOrder()) {
+                    return first.getPlacementOrder() < second.getPlacementOrder()
+                            ? -1 : 1;
+                }
+                return Integer.compare(first.getEntityId(), second.getEntityId());
+            }
+        });
+        return result;
+    }
+
     public static void showNetwork(EntityPlayer player, EntityChannelSpark source) {
         if (player == null || source == null || source.world == null || source.world.isRemote) {
             return;
@@ -870,13 +917,8 @@ public final class ChannelSparkNetwork {
             return;
         }
 
-        List<EntityChannelSpark> endpointSparks = new ArrayList<>();
-        for (EntityChannelSpark spark : network) {
-            if (spark != null && spark != main && !spark.isMainChannelSpark()
-                    && hasUsableEndpoint(spark)) {
-                endpointSparks.add(spark);
-            }
-        }
+        List<EntityChannelSpark> endpointSparks =
+                collectUniqueEndpointSparks(main, network, mainProxy);
 
         removeStaleNonSourceBridges(network, main);
         removeUndesiredBridges(main, endpointSparks);
@@ -1287,8 +1329,12 @@ if (network == null || network.isEmpty()) {
         }
         try {
             // The local node consumes the channel on the attached AE network.
+            // Cable endpoints require the real physical side; INTERNAL makes
+            // AE2 treat the synthetic proxy as an invalid cable connection.
+            AEPartLocation attachmentDirection = isCableNode(endpoint.node)
+                    ? proxy.attachmentDirection : AEPartLocation.INTERNAL;
             IGridConnection localConnection = GridConnection.create(
-                    endpoint.node, proxy.innerNode(), AEPartLocation.INTERNAL);
+                    endpoint.node, proxy.innerNode(), attachmentDirection);
             if (localConnection == null) {
                 return false;
             }
@@ -1300,10 +1346,9 @@ if (network == null || network.isEmpty()) {
             // synthetic host, attach it using the endpoint's real face so
             // the P2P output still belongs to the destination network.
             if (safeGrid(proxy.outerNode()) != safeGrid(endpoint.node)) {
-                AEPartLocation face = endpoint.direction;
-                if (face == null
-                        || (face == AEPartLocation.INTERNAL
-                        && isCableNode(endpoint.node))) {
+                AEPartLocation face = isCableNode(endpoint.node)
+                        ? proxy.attachmentDirection : endpoint.direction;
+                if (face == null) {
                     return false;
                 }
                 try {
