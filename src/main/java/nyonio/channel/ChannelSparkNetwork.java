@@ -1590,7 +1590,18 @@ if (network == null || network.isEmpty()) {
         }
         try {
             for (IGridConnection connection : node.getConnections()) {
-                if (connection != null && direction == connection.getDirection(node)) {
+                if (connection == null) {
+                    continue;
+                }
+                IGridNode other = connection.getOtherSide(node);
+                // The six channel-input proxies are owned by this spark. They
+                // must not make a controller face look occupied when the main
+                // P2P endpoint is selected; otherwise the endpoint rotates on
+                // every rebuild and leaves a fan of stale visual links.
+                if (isSparkProxyNode(other)) {
+                    continue;
+                }
+                if (direction == connection.getDirection(node)) {
                     return true;
                 }
             }
