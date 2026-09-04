@@ -288,7 +288,8 @@ public final class ChannelSparkNetwork {
                     && direction == endpoint.direction
                     && innerNode() != null && node() != null
                     && safeGrid(innerNode()) != null
-                    && safeGrid(innerNode()) == safeGrid(endpoint.node);
+                    && safeGrid(innerNode()) == safeGrid(endpoint.node)
+                    && safeGrid(node()) == safeGrid(endpoint.node);
         }
 
         private void destroy() {
