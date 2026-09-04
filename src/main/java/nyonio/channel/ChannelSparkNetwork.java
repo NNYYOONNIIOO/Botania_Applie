@@ -246,42 +246,31 @@ public final class ChannelSparkNetwork {
             // node on DOWN. Keep the inner proxy on that opposite physical
             // face so it can consume one local channel without becoming a
             // second world-facing endpoint.
-            // Match PartP2PTunnelME's regular proxy: it is a dense smart
-            // channel endpoint even though it is attached explicitly rather
-            // than through a physical CableBusContainer part.
             ProxyHost innerHost = new ProxyHost(this.anchor, innerLocation,
-                    EnumSet.allOf(EnumFacing.class));
+                    EnumSet.noneOf(EnumFacing.class));
             this.innerProxy = new AENetworkProxy(
                     innerHost, "botania_applie_channel_spark_inner", ItemStack.EMPTY, false);
             innerHost.setProxy(this.innerProxy);
             this.innerProxy.setFlags(GridFlags.REQUIRE_CHANNEL,
                     GridFlags.COMPRESSED_CHANNEL);
 
-            // Ordinary output sparks use the native world-facing P2P side and
-            // discover the block directly below them. The main spark targets
-            // an ME controller; its node is CANNOT_CARRY, so it must be
-            // attached explicitly from the carrying proxy instead of being
-            // discovered as an arbitrary controller face.
-            boolean controllerEndpoint = endpoint != null
-                    && endpoint.controllerFace;
+            // Both input and output sparks use the native world-facing P2P
+            // side. It discovers exactly the block directly below the spark;
+            // the regular inner node is the only local channel attachment.
             ProxyHost outerHost = new ProxyHost(this.anchor, outerLocation,
-                    controllerEndpoint
-                            ? EnumSet.noneOf(EnumFacing.class)
-                            : EnumSet.of(EnumFacing.DOWN));
+                    EnumSet.of(EnumFacing.DOWN));
             this.outerProxy = new AENetworkProxy(
                     outerHost, "botania_applie_channel_spark_outer", ItemStack.EMPTY,
-                    !controllerEndpoint);
+                    true);
             outerHost.setProxy(this.outerProxy);
             this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY,
                     GridFlags.CANNOT_CARRY_COMPRESSED);
 
-            this.innerProxy.setValidSides(EnumSet.allOf(EnumFacing.class));
-            // Only ordinary outputs use world discovery. The controller
-            // input is connected explicitly below so the controller block is
-            // the input point and no +X side becomes a visible cable edge.
-            this.outerProxy.setValidSides(controllerEndpoint
-                    ? EnumSet.noneOf(EnumFacing.class)
-                    : EnumSet.of(EnumFacing.DOWN));
+            // The inner node is joined explicitly and must not expose six
+            // synthetic physical cable sides. The outer node alone performs
+            // world discovery through the block directly below the spark.
+            this.innerProxy.setValidSides(EnumSet.noneOf(EnumFacing.class));
+            this.outerProxy.setValidSides(EnumSet.of(EnumFacing.DOWN));
             this.innerProxy.onReady();
             this.outerProxy.onReady();
         }
@@ -299,8 +288,7 @@ public final class ChannelSparkNetwork {
                     && direction == endpoint.direction
                     && innerNode() != null && node() != null
                     && safeGrid(innerNode()) != null
-                    && safeGrid(innerNode()) == safeGrid(endpoint.node)
-                    && safeGrid(node()) == safeGrid(endpoint.node);
+                    && safeGrid(innerNode()) == safeGrid(endpoint.node);
         }
 
         private void destroy() {
@@ -1023,52 +1011,24 @@ if (network == null || network.isEmpty()) {
             // the dense P2P endpoint. Using a world-facing outer connection
             // here creates visible cable paths and produces the screenshot's
             // cable-like topology.
-            // Controller faces select channel capacity but do not define the
-            // spark's rendered geometry. A controller is CANNOT_CARRY, so the
-            // carrying proxy must be side A for the controller edge; this
-            // leaves the controller itself as the input block without making
-            // its +X face the visible spark connection. Ordinary target
-            // networks use their physical target-to-spark direction.
-            IGridNode firstNode;
-            IGridNode secondNode;
-            AEPartLocation localDirection;
-            if (endpoint.controllerFace) {
-                firstNode = proxy.innerNode();
-                secondNode = endpoint.node;
-                localDirection = AEPartLocation.INTERNAL;
-            } else {
-                firstNode = endpoint.node;
-                secondNode = proxy.innerNode();
-                localDirection = proxy.attachmentDirection == null
-                        || proxy.attachmentDirection == AEPartLocation.INTERNAL
-                        ? AEPartLocation.UP : proxy.attachmentDirection;
-            }
+            // The selected controller face controls channel allocation, but
+            // must not become the rendered connection direction. INTERNAL
+            // keeps the controller itself as the input point. An ordinary
+            // target uses the physical target-to-spark direction.
+            AEPartLocation localDirection = endpoint.controllerFace
+                    ? AEPartLocation.INTERNAL
+                    : proxy.attachmentDirection == null
+                    || proxy.attachmentDirection == AEPartLocation.INTERNAL
+                    ? AEPartLocation.UP : proxy.attachmentDirection;
             IGridConnection localAttachment = GridConnection.create(
-                    firstNode, secondNode, localDirection);
+                    endpoint.node, proxy.innerNode(), localDirection);
             proxy.attachments.add(localAttachment);
-            repathAfterConnection(firstNode, secondNode);
+            repathAfterConnection(endpoint.node, proxy.innerNode());
 
-            if (endpoint.controllerFace) {
-                // The controller input has no world-facing side. Put the
-                // dense outer node in the same controller grid explicitly,
-                // with the carrying proxy as side A so AE2 can compute a
-                // valid route despite the controller's CANNOT_CARRY flag.
-                IGridConnection outerAttachment = GridConnection.create(
-                        proxy.node(), endpoint.node, AEPartLocation.INTERNAL);
-                proxy.attachments.add(outerAttachment);
-                repathAfterConnection(proxy.node(), endpoint.node);
-            }
-
-            // The outer node is world-accessible and may finish discovering
-            // the adjacent controller on the next AE2 pathing tick. The
-            // inner node is the channel-consuming local endpoint and is the
-            // only node that must be attached before this proxy is retained.
-            // Do not create the outer-to-outer P2P edge while the world node
-            // is still isolated. Otherwise the sparks appear connected but
-            // no channel can reach the target network; the next server tick
-            // will retry after AE2 finishes world discovery.
-            return safeGrid(proxy.innerNode()) == endpointGrid
-                    && safeGrid(proxy.node()) == endpointGrid;
+            // World discovery of the outer node is asynchronous. The P2P
+            // builder validates it before creating the outer-to-outer edge;
+            // the local channel attachment is the only requirement here.
+            return safeGrid(proxy.innerNode()) == endpointGrid;
         } catch (Throwable error) {
             logConnectionFailure("AE2 channel spark endpoint attachment",
                     endpoint.node, proxy.innerNode(), error);
