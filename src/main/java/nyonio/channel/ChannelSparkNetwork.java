@@ -210,8 +210,11 @@ public final class ChannelSparkNetwork {
             this.anchor = endpoint == null ? null : endpoint.node;
             this.direction = endpoint == null ? null : endpoint.direction;
             EnumFacing face = getProxyAttachmentFace(endpoint, spark);
-            BlockPos endpointPos = getEndpointBlockPos(endpoint, targetPos);
-            BlockPos proxyPos = face == null ? endpointPos : endpointPos.offset(face);
+            // The world-facing node represents the spark itself. The AE host
+            // is the block below it; deriving this position from a controller
+            // face shifts the rendered P2P endpoint sideways (toward +X).
+            BlockPos proxyPos = targetPos == null
+                    ? getEndpointBlockPos(endpoint, targetPos) : targetPos.up();
             DimensionalCoord location = new DimensionalCoord(world, proxyPos);
 
             ProxyHost innerHost = new ProxyHost(this.anchor, location);
@@ -233,7 +236,9 @@ public final class ChannelSparkNetwork {
                 this.innerProxy.setValidSides(validSides);
                 // Let the world-facing outer node discover the adjacent AE
                 // host through its synthetic location, as native ME P2P does.
-                this.outerProxy.setValidSides(EnumSet.of(face.getOpposite()));
+                // Find the attached AE host directly below the spark, just as
+                // the external side of a native ME P2P part does.
+                this.outerProxy.setValidSides(EnumSet.of(EnumFacing.DOWN));
             }
             this.innerProxy.onReady();
             this.outerProxy.onReady();
