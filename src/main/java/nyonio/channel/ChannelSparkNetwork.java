@@ -161,7 +161,7 @@ public final class ChannelSparkNetwork {
 
         @Override
         public IGridNode getGridNode(AEPartLocation direction) {
-            return anchor;
+            return proxy == null ? null : proxy.getNode();
         }
 
         @Override
@@ -217,7 +217,7 @@ public final class ChannelSparkNetwork {
 
             ProxyHost outerHost = new ProxyHost(this.anchor, location);
             this.outerProxy = new AENetworkProxy(
-                    outerHost, "botania_applie_channel_spark_outer", ItemStack.EMPTY, false);
+                    outerHost, "botania_applie_channel_spark_outer", ItemStack.EMPTY, true);
             outerHost.setProxy(this.outerProxy);
             this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY,
                     GridFlags.CANNOT_CARRY_COMPRESSED);
@@ -904,20 +904,19 @@ if (network == null || network.isEmpty()) {
             return false;
         }
         try {
-            // Both nodes are attached to the same local AE network, but they
-            // remain separate GridNodes. This mirrors AE2's P2P-ME part:
-            // the inner node consumes a compressed channel locally, while
-            // the outer dense node is the endpoint used by remote tunnels.
+            // The inner node is the only local attachment and consumes one
+            // compressed channel, just like PartP2PTunnelME.getProxy().
+            // The outer node is world-accessible and attaches to the target
+            // host through GridNode.findConnections(), just like AE2's
+            // PartP2PTunnelME.outerProxy. Directly attaching the outer node
+            // to the target would make this bridge behave like a cable.
             IGridConnection localAttachment = GridConnection.create(
                     endpoint.node, proxy.innerNode(), endpoint.direction);
             proxy.attachments.add(localAttachment);
             repathAfterConnection(endpoint.node, proxy.innerNode());
-
-            IGridConnection outerAttachment = GridConnection.create(
-                    endpoint.node, proxy.node(), endpoint.direction);
-            proxy.attachments.add(outerAttachment);
-            repathAfterConnection(endpoint.node, proxy.node());
-            return safeGrid(proxy.node()) == endpointGrid;
+            proxy.node().updateState();
+            return safeGrid(proxy.innerNode()) == endpointGrid
+                    && safeGrid(proxy.node()) == endpointGrid;
         } catch (Throwable error) {
             logConnectionFailure("AE2 channel spark endpoint attachment",
                     endpoint.node, proxy.innerNode(), error);
