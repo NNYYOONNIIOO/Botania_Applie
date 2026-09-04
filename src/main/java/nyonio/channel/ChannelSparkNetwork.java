@@ -223,7 +223,7 @@ public final class ChannelSparkNetwork {
 
             ProxyHost outerHost = new ProxyHost(this.anchor, location);
             this.outerProxy = new AENetworkProxy(
-                    outerHost, "botania_applie_channel_spark_outer", ItemStack.EMPTY, false);
+                    outerHost, "botania_applie_channel_spark_outer", ItemStack.EMPTY, true);
             outerHost.setProxy(this.outerProxy);
             this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY,
                     GridFlags.CANNOT_CARRY_COMPRESSED);
@@ -231,7 +231,9 @@ public final class ChannelSparkNetwork {
             if (face != null) {
                 EnumSet<EnumFacing> validSides = EnumSet.of(face.getOpposite());
                 this.innerProxy.setValidSides(validSides);
-                this.outerProxy.setValidSides(EnumSet.noneOf(EnumFacing.class));
+                // Let the world-facing outer node discover the adjacent AE
+                // host through its synthetic location, as native ME P2P does.
+                this.outerProxy.setValidSides(EnumSet.of(face.getOpposite()));
             }
             this.innerProxy.onReady();
             this.outerProxy.onReady();
@@ -942,11 +944,6 @@ if (network == null || network.isEmpty()) {
                     endpoint.node, proxy.innerNode(), endpoint.direction);
             proxy.attachments.add(localAttachment);
             repathAfterConnection(endpoint.node, proxy.innerNode());
-
-            IGridConnection outerAttachment = GridConnection.create(
-                    endpoint.node, proxy.node(), AEPartLocation.INTERNAL);
-            proxy.attachments.add(outerAttachment);
-            repathAfterConnection(endpoint.node, proxy.node());
 
             return safeGrid(proxy.innerNode()) == endpointGrid
                     && safeGrid(proxy.node()) == endpointGrid;
