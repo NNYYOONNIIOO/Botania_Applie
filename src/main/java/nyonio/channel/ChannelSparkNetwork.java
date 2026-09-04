@@ -210,7 +210,8 @@ public final class ChannelSparkNetwork {
             this.anchor = endpoint == null ? null : endpoint.node;
             this.direction = endpoint == null ? null : endpoint.direction;
             EnumFacing face = getProxyAttachmentFace(endpoint, spark);
-            BlockPos proxyPos = face == null ? targetPos : targetPos.offset(face);
+            BlockPos endpointPos = getEndpointBlockPos(endpoint, targetPos);
+            BlockPos proxyPos = face == null ? endpointPos : endpointPos.offset(face);
             DimensionalCoord location = new DimensionalCoord(world, proxyPos);
 
             ProxyHost innerHost = new ProxyHost(this.anchor, location);
@@ -257,6 +258,29 @@ public final class ChannelSparkNetwork {
             outerProxy.invalidate();
             innerProxy.invalidate();
         }
+    }
+
+    /**
+     * Put the synthetic world node next to the same AE host selected for the
+     * inner attachment. A spark may target an interface or another device
+     * whose carrying cable is in an adjacent block; using targetPos here made
+     * outerProxy discover a different node and collapse the local grids into
+     * the cable-like topology shown in the current setup.
+     */
+    private static BlockPos getEndpointBlockPos(BridgeEndpoint endpoint,
+                                                BlockPos fallback) {
+        if (endpoint == null || endpoint.node == null) {
+            return fallback;
+        }
+        try {
+            DimensionalCoord location = endpoint.node.getGridBlock().getLocation();
+            if (location != null) {
+                return new BlockPos(location.x, location.y, location.z);
+            }
+        } catch (Throwable ignored) {
+            // The grid may be rebuilding while the spark is ticking.
+        }
+        return fallback;
     }
 
     private static EnumFacing getProxyAttachmentFace(BridgeEndpoint endpoint,
