@@ -213,12 +213,17 @@ public final class ChannelSparkNetwork {
         private final AENetworkProxy outerProxy;
         private final IGridNode anchor;
         private final AEPartLocation direction;
+        private final AEPartLocation attachmentDirection;
         private final List<IGridConnection> attachments = new ArrayList<>();
 
         private BridgeProxy(BridgeEndpoint endpoint, World world,
                             BlockPos targetPos, EntityChannelSpark spark) {
             this.anchor = endpoint == null ? null : endpoint.node;
             this.direction = endpoint == null ? null : endpoint.direction;
+            AEPartLocation physicalDirection = getCableAttachmentDirection(spark);
+            this.attachmentDirection = physicalDirection == null
+                    || physicalDirection == AEPartLocation.INTERNAL
+                    ? AEPartLocation.UP : physicalDirection;
             EnumFacing face = getProxyAttachmentFace(endpoint, spark);
             // The inner node belongs to the attached block itself. The outer
             // node belongs to the spark one block above it and discovers only
@@ -615,13 +620,28 @@ public final class ChannelSparkNetwork {
         }
     }
 
+    private static BridgeEndpoint selectP2PEndpoint(
+            List<BridgeEndpoint> endpoints, EntityChannelSpark spark) {
+        if (endpoints != null && spark != null) {
+            AEPartLocation physicalDirection = getCableAttachmentDirection(spark);
+            if (physicalDirection != null) {
+                for (BridgeEndpoint endpoint : endpoints) {
+                    if (endpoint != null && endpoint.direction == physicalDirection) {
+                        return endpoint;
+                    }
+                }
+            }
+        }
+        return selectP2PEndpoint(endpoints);
+    }
+
     private static BridgeProxy getOrCreateMainProxy(EntityChannelSpark main) {
         if (main == null || main.world == null || main.getTargetPos() == null) {
             return null;
         }
         List<BridgeEndpoint> endpoints =
                 findBridgeEndpoints(main.world, main.getTargetPos());
-        BridgeEndpoint endpoint = selectP2PEndpoint(endpoints);
+            BridgeEndpoint endpoint = selectP2PEndpoint(endpoints, main);
         if (endpoint == null) {
             return null;
         }
@@ -904,7 +924,7 @@ if (network == null || network.isEmpty()) {
         }
         List<BridgeEndpoint> secondEndpoints =
                 findBridgeEndpoints(second.world, second.getTargetPos());
-        BridgeEndpoint secondEndpoint = selectP2PEndpoint(secondEndpoints);
+            BridgeEndpoint secondEndpoint = selectP2PEndpoint(secondEndpoints, second);
         if (secondEndpoint == null) {
             return build;
         }
@@ -961,10 +981,26 @@ if (network == null || network.isEmpty()) {
             // the dense P2P endpoint. Using a world-facing outer connection
             // here creates visible cable paths and produces the screenshot's
             // cable-like topology.
+            AEPartLocation localDirection = endpoint.direction == null
+                    || endpoint.direction == AEPartLocation.INTERNAL
+                    ? proxy.attachmentDirection : endpoint.direction;
             IGridConnection localAttachment = GridConnection.create(
-                    endpoint.node, proxy.innerNode(), endpoint.direction);
+                    endpoint.node, proxy.innerNode(), localDirection);
             proxy.attachments.add(localAttachment);
             repathAfterConnection(endpoint.node, proxy.innerNode());
+
+            // A real ME P2P part discovers its adjacent host through the
+            // world-facing outer proxy. A machine such as an ME interface may
+            // expose only an INTERNAL node, so AE2 cannot discover it from the
+            // synthetic world position. In that case attach the outer side to
+            // the exact target node using the physical UP face of the block,
+            // never INTERNAL and never the controller's first (+X) face.
+            if (safeGrid(proxy.node()) != endpointGrid) {
+                IGridConnection outerAttachment = GridConnection.create(
+                        endpoint.node, proxy.node(), proxy.attachmentDirection);
+                proxy.attachments.add(outerAttachment);
+                repathAfterConnection(endpoint.node, proxy.node());
+            }
 
             return safeGrid(proxy.innerNode()) == endpointGrid
                     && safeGrid(proxy.node()) == endpointGrid;
