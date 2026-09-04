@@ -415,32 +415,24 @@ public final class ChannelSparkNetwork {
             for (AEPartLocation face : unusedFaces) {
                 AENetworkProxy channelProxy = createControllerChannelProxy(
                         face.toString(), face, controllerLocation);
-                AENetworkProxy outerProxy = createControllerOuterProxy(
-                        face.toString(), face, controllerLocation);
-                if (channelProxy == null || outerProxy == null
-                        || channelProxy.getNode() == null
-                        || outerProxy.getNode() == null) {
+                if (channelProxy == null || channelProxy.getNode() == null) {
                     destroyControllerInputs();
                     return false;
                 }
 
                 controllerChannelProxies.add(channelProxy);
-                controllerOuterProxies.add(outerProxy);
                 controllerFaces.add(face);
-                if (!ensureControllerFaceConnection(controller, channelProxy, face)
-                        || !ensureControllerFaceConnection(controller, outerProxy, face)) {
+                if (!ensureControllerFaceConnection(controller, channelProxy, face)) {
                     destroyControllerInputs();
                     return false;
                 }
                 repathAfterConnection(controller, channelProxy.getNode());
-                repathAfterConnection(controller, outerProxy.getNode());
             }
             return !controllerChannelProxies.isEmpty();
         }
 
         private boolean hasControllerInputsInGrid(IGridNode controller) {
             if (controller == null || controllerChannelProxies.isEmpty()
-                    || controllerChannelProxies.size() != controllerOuterProxies.size()
                     || controllerChannelProxies.size() != controllerFaces.size()) {
                 return false;
             }
@@ -450,16 +442,47 @@ public final class ChannelSparkNetwork {
             }
             for (int index = 0; index < controllerFaces.size(); index++) {
                 IGridNode channelNode = controllerChannelProxies.get(index).getNode();
-                IGridNode outerNode = controllerOuterProxies.get(index).getNode();
-                if (channelNode == null || outerNode == null
+                if (channelNode == null
                         || safeGrid(channelNode) != controllerGrid
-                        || safeGrid(outerNode) != controllerGrid
-                        || !hasDirectConnection(controller, channelNode)
-                        || !hasDirectConnection(controller, outerNode)) {
+                        || !hasDirectConnection(controller, channelNode)) {
                     return false;
                 }
             }
             return true;
+        }
+
+        private boolean attachControllerBridgeNodes(IGridNode controller) {
+            if (controller == null || innerNode() == null || outerNode() == null) {
+                return false;
+            }
+            try {
+                if (!hasDirectConnection(controller, innerNode())) {
+                    IGridConnection innerConnection = GridConnection.create(
+                            controller, innerNode(), AEPartLocation.INTERNAL);
+                    if (innerConnection == null) {
+                        return false;
+                    }
+                    attachments.add(innerConnection);
+                }
+                if (!hasDirectConnection(controller, outerNode())) {
+                    IGridConnection outerConnection = GridConnection.create(
+                            controller, outerNode(), AEPartLocation.INTERNAL);
+                    if (outerConnection == null) {
+                        return false;
+                    }
+                    attachments.add(outerConnection);
+                }
+                repathAfterConnection(controller, innerNode());
+                repathAfterConnection(controller, outerNode());
+                Object controllerGrid = safeGrid(controller);
+                return controllerGrid != null
+                        && safeGrid(innerNode()) == controllerGrid
+                        && safeGrid(outerNode()) == controllerGrid;
+            } catch (Throwable error) {
+                logConnectionFailure("controller shared P2P endpoint attachment",
+                        controller, outerNode(), error);
+                return false;
+            }
         }
 
         private void destroyControllerInputs() {
@@ -485,7 +508,12 @@ public final class ChannelSparkNetwork {
             if (endpoint.controllerFace) {
                 // Physical controller faces can be occupied after creation;
                 // reuse the bridge based on its own live input connections.
-                return hasControllerInputsInGrid(endpoint.node);
+                return hasControllerInputsInGrid(endpoint.node)
+                        && innerNode() != null && outerNode() != null
+                        && safeGrid(innerNode()) == safeGrid(endpoint.node)
+                        && safeGrid(outerNode()) == safeGrid(endpoint.node)
+                        && hasDirectConnection(endpoint.node, innerNode())
+                        && hasDirectConnection(endpoint.node, outerNode());
             }
             return innerNode() != null && node() != null
                     && safeGrid(innerNode()) != null
@@ -793,13 +821,20 @@ public final class ChannelSparkNetwork {
         if (!isHubLink(first, second)) {
             return;
         }
-        Link existing = first.getLinks().get(second.getUniqueID());
-        if (existing != null) {
+        UUID firstId = first.getUniqueID();
+        UUID secondId = second.getUniqueID();
+        Link firstLink = first.getLinks().get(secondId);
+        Link secondLink = second.getLinks().get(firstId);
+        if (firstLink != null && secondLink != null) {
             return;
         }
 
-        first.getLinks().put(second.getUniqueID(), new Link(second, null));
-        second.getLinks().put(first.getUniqueID(), new Link(first, null));
+        // Repair a half-link in place; the logical map contains one edge per
+        // main/output UUID pair and never creates a duplicate edge.
+        first.getLinks().remove(secondId);
+        second.getLinks().remove(firstId);
+        first.getLinks().put(secondId, new Link(second, null));
+        second.getLinks().put(firstId, new Link(first, null));
     }
 
     private static void reconcileAeBridges(EntityChannelSpark source) {
@@ -851,7 +886,8 @@ public final class ChannelSparkNetwork {
         int expectedConnections = 1;
             BridgeRecord existing = AE_BRIDGES.get(key);
             if (existing != null) {
-                if (existing.expectedConnections >= expectedConnections
+                if (existing.expectedConnections == expectedConnections
+                        && existing.connections.size() == expectedConnections
                         && areConnectionsAlive(existing.connections)) {
                     continue;
                 }
@@ -1177,19 +1213,14 @@ if (network == null || network.isEmpty()) {
                 return build;
             }
 
-            // One remote spark is one P2P output. Allocate it to exactly one
-            // controller-face input in +X,+Y,+Z,-X,-Y,-Z order. Connecting
-            // the same output to every input creates six parallel links for
-            // one spark pair, produces the visual fan, and consumes the
-            // channel path incorrectly.
-            AENetworkProxy inputOuter = mainProxy.acquireControllerOuterProxy();
-            if (inputOuter == null || inputOuter.getNode() == null) {
-                destroyConnections(build.connections);
+            // The six controller faces feed the shared main endpoint. One
+            // main/output spark pair owns exactly one P2P connection.
+            if (mainProxy.outerNode() == null) {
                 secondProxy.destroy();
-                return new BridgeBuild();
+                return build;
             }
             IGridConnection connection = createP2PGridConnection(
-                    inputOuter.getNode(), secondProxy.outerNode());
+                    mainProxy.outerNode(), secondProxy.outerNode());
             if (connection == null) {
                 destroyConnections(build.connections);
                 secondProxy.destroy();
@@ -1215,9 +1246,12 @@ if (network == null || network.isEmpty()) {
             return false;
         }
         if (endpoint.controllerFace) {
-            // The shared proxy outer node is not the source hub. Each unused
-            // controller face gets its own channel/outer P2P pair.
-            return proxy.createControllerChannelInputs(endpoint.node);
+            if (!proxy.createControllerChannelInputs(endpoint.node)) {
+                return false;
+            }
+            // The six face proxies are the channel source pool. The main
+            // spark itself exposes one shared P2P endpoint to remote sparks.
+            return proxy.attachControllerBridgeNodes(endpoint.node);
         }
         if (proxy.innerNode() == null || proxy.outerNode() == null
                 || safeGrid(endpoint.node) == null) {
@@ -1371,6 +1405,11 @@ if (network == null || network.isEmpty()) {
         if (first == null || second == null) {
             return null;
         }
+        IGridConnection existing = findDirectGridConnection(first, second);
+        if (existing != null) {
+            registerConnection(existing);
+            return existing;
+        }
         PENDING_CHANNEL_CAPACITY.set(ChannelSparkConfig.getChannelCapacity());
         try {
             IGridConnection connection = AEApi.instance().grid()
@@ -1384,6 +1423,23 @@ if (network == null || network.isEmpty()) {
         } finally {
             PENDING_CHANNEL_CAPACITY.remove();
         }
+    }
+
+    private static IGridConnection findDirectGridConnection(IGridNode first,
+                                                             IGridNode second) {
+        if (first == null || second == null) {
+            return null;
+        }
+        try {
+            for (IGridConnection connection : first.getConnections()) {
+                if (connection != null
+                        && connection.getOtherSide(first) == second) {
+                    return connection;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
     }
 
     private static List<BridgeEndpoint[]> pairBridgeEndpoints(
