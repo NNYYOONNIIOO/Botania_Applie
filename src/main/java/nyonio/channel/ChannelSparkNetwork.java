@@ -726,6 +726,87 @@ public final class ChannelSparkNetwork {
     }
 
     /**
+     * A logical spark network represents AE2 destination networks, not every
+     * physical spark mounted on the same destination. Keep one stable spark
+     * representative per target grid so a main spark has one relationship
+     * with one channel spark for that network.
+     */
+    private static List<EntityChannelSpark> collectUniqueLogicalEndpoints(
+            EntityChannelSpark main, List<EntityChannelSpark> nearby,
+            double maxDistance) {
+        List<EntityChannelSpark> result = new ArrayList<>();
+        if (main == null || nearby == null) {
+            return result;
+        }
+        BridgeEndpoint mainEndpoint = selectP2PEndpoint(
+                findBridgeEndpoints(main.world, main.getTargetPos()), main);
+        Object sourceGrid = mainEndpoint == null
+                ? null : safeGrid(mainEndpoint.node);
+        IdentityHashMap<Object, EntityChannelSpark> representatives =
+                new IdentityHashMap<>();
+        for (EntityChannelSpark candidate : nearby) {
+            if (candidate == null || candidate == main || candidate.isDead
+                    || candidate.world != main.world
+                    || candidate.isMainChannelSpark()
+                    || !isPrimaryInBlock(candidate)
+                    || main.getDistanceSq(candidate) > maxDistance
+                    || !hasUsableEndpoint(candidate)) {
+                continue;
+            }
+            BridgeEndpoint endpoint = selectP2PEndpoint(
+                    findBridgeEndpoints(candidate.world, candidate.getTargetPos()),
+                    candidate);
+            Object targetGrid = endpoint == null ? null : safeGrid(endpoint.node);
+            if (targetGrid == null || targetGrid == sourceGrid) {
+                continue;
+            }
+            EntityChannelSpark previous = representatives.get(targetGrid);
+            if (previous == null || isEarlier(candidate, previous)) {
+                representatives.put(targetGrid, candidate);
+            }
+        }
+        result.addAll(representatives.values());
+        Collections.sort(result, new Comparator<EntityChannelSpark>() {
+            @Override
+            public int compare(EntityChannelSpark first, EntityChannelSpark second) {
+                if (first.getPlacementOrder() != second.getPlacementOrder()) {
+                    return first.getPlacementOrder() < second.getPlacementOrder()
+                            ? -1 : 1;
+                }
+                return Integer.compare(first.getEntityId(), second.getEntityId());
+            }
+        });
+        return result;
+    }
+
+    private static void reconcileLogicalLinks(EntityChannelSpark main,
+                                               List<EntityChannelSpark> desired) {
+        if (main == null) {
+            return;
+        }
+        Set<UUID> desiredIds = new HashSet<>();
+        if (desired != null) {
+            for (EntityChannelSpark candidate : desired) {
+                if (candidate != null) {
+                    desiredIds.add(candidate.getUniqueID());
+                }
+            }
+        }
+        for (Link link : new ArrayList<>(main.getLinks().values())) {
+            EntityChannelSpark other = link.other;
+            if (other == null || !desiredIds.contains(other.getUniqueID())
+                    || !isHubLink(main, other)) {
+                unlink(main, other, link.connection);
+            }
+        }
+        if (desired != null) {
+            for (EntityChannelSpark candidate : desired) {
+                connect(main, candidate);
+            }
+        }
+    }
+
+    /**
      * A Botania spark network may contain many channel sparks attached to
      * different points of the same AE2 grid. They are one P2P destination,
      * not one P2P tunnel per spark. Keep the earliest valid spark as the
@@ -812,22 +893,16 @@ public final class ChannelSparkNetwork {
         AxisAlignedBB search = new AxisAlignedBB(
                 spark.posX - radius, spark.posY - radius, spark.posZ - radius,
                 spark.posX + radius, spark.posY + radius, spark.posZ + radius);
-        List<EntityChannelSpark> nearby = spark.world.getEntitiesWithinAABB(EntityChannelSpark.class, search);
+        List<EntityChannelSpark> nearby = spark.world.getEntitiesWithinAABB(
+                EntityChannelSpark.class, search);
 
-        // Channel sparks form a P2P star, not a cable mesh. Only the main
-        // controller spark may be the hub; ordinary sparks never link to
-        // one another, even when they are physically adjacent.
         EntityChannelSpark main = findLocalMainSpark(spark, nearby, maxDistance);
         if (main != null) {
-            for (EntityChannelSpark other : nearby) {
-                if (other == null || other == main || other.isDead
-                        || other.world != spark.world || other.isMainChannelSpark()
-                        || !isPrimaryInBlock(other)
-                        || main.getDistanceSq(other) > maxDistance) {
-                    continue;
-                }
-                connect(main, other);
-            }
+            // Reconcile the entire logical star from one canonical list. This
+            // removes old fan-out links before adding the one allowed pair for
+            // each distinct AE2 destination network.
+            reconcileLogicalLinks(main,
+                    collectUniqueLogicalEndpoints(main, nearby, maxDistance));
         }
 
         cleanupBridgeRecords();
