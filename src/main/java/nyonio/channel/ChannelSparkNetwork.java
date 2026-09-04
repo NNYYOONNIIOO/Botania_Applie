@@ -246,8 +246,11 @@ public final class ChannelSparkNetwork {
             // node on DOWN. Keep the inner proxy on that opposite physical
             // face so it can consume one local channel without becoming a
             // second world-facing endpoint.
+            // Match PartP2PTunnelME's regular proxy: it is a dense smart
+            // channel endpoint even though it is attached explicitly rather
+            // than through a physical CableBusContainer part.
             ProxyHost innerHost = new ProxyHost(this.anchor, innerLocation,
-                    EnumSet.noneOf(EnumFacing.class));
+                    EnumSet.allOf(EnumFacing.class));
             this.innerProxy = new AENetworkProxy(
                     innerHost, "botania_applie_channel_spark_inner", ItemStack.EMPTY, false);
             innerHost.setProxy(this.innerProxy);
@@ -266,7 +269,7 @@ public final class ChannelSparkNetwork {
             this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY,
                     GridFlags.CANNOT_CARRY_COMPRESSED);
 
-            this.innerProxy.setValidSides(EnumSet.noneOf(EnumFacing.class));
+            this.innerProxy.setValidSides(EnumSet.allOf(EnumFacing.class));
             // GridNode.findConnections() now looks one block DOWN and asks
             // that host for its UP-side node. Do not add a second manual
             // outer connection: this preserves the native P2P boundary.
@@ -1041,7 +1044,12 @@ if (network == null || network.isEmpty()) {
             // the adjacent controller on the next AE2 pathing tick. The
             // inner node is the channel-consuming local endpoint and is the
             // only node that must be attached before this proxy is retained.
-            return safeGrid(proxy.innerNode()) == endpointGrid;
+            // Do not create the outer-to-outer P2P edge while the world node
+            // is still isolated. Otherwise the sparks appear connected but
+            // no channel can reach the target network; the next server tick
+            // will retry after AE2 finishes world discovery.
+            return safeGrid(proxy.innerNode()) == endpointGrid
+                    && safeGrid(proxy.node()) == endpointGrid;
         } catch (Throwable error) {
             logConnectionFailure("AE2 channel spark endpoint attachment",
                     endpoint.node, proxy.innerNode(), error);
@@ -1362,13 +1370,11 @@ if (network == null || network.isEmpty()) {
                     AEPartLocation.INTERNAL);
         }
 
-        // Keep the adjacent-cable fallback for an ordinary block without a
-        // usable host node, using the same deterministic face order.
-        for (EnumFacing facing : CHANNEL_DIRECTION_ORDER) {
-            TileEntity adjacent = world.getTileEntity(pos.offset(facing));
-            addBridgeEndpoint(endpoints, findGridNodeOnObject(adjacent, false),
-                    AEPartLocation.fromFacing(facing));
-        }
+        // The target is the block directly below the spark. Do not scan its
+        // neighbours in +X,+Y,... order: that fallback makes an interface or
+        // device appear to be attached to the EAST/+X cable and is the source
+        // of the offset connection shown in the current screenshot. A target
+        // without an exposed node is simply not a valid P2P endpoint yet.
         return collapseCableEndpoints(endpoints);
     }
 
