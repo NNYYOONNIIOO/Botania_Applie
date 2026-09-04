@@ -283,6 +283,9 @@ public final class ChannelSparkNetwork {
         private IGridNode innerNode() {
             return innerProxy.getNode();
         }
+        private IGridNode outerNode() {
+            return outerProxy.getNode();
+        }
 
         private IGridNode node() {
             return outerProxy.getNode();
@@ -978,7 +981,7 @@ if (network == null || network.isEmpty()) {
             // Each output keeps its regular/channel-bearing node in the
             // network below that spark, just like a native ME-P2P output part.
             // Only the output outer node participates in the wireless edge.
-            if (!attachOutputProxy(secondProxy, mainProxy.innerNode(),
+            if (!attachOutputProxy(secondProxy, mainProxy.outerNode(),
                     secondEndpoint.node)) {
                 secondProxy.destroy();
                 return build;
