@@ -217,10 +217,7 @@ public final class ChannelSparkNetwork {
         private final List<IGridConnection> attachments = new ArrayList<>();
         private final List<AENetworkProxy> controllerChannelProxies =
                 new ArrayList<>();
-        private final List<AENetworkProxy> controllerOuterProxies =
-                new ArrayList<>();
         private final List<AEPartLocation> controllerFaces = new ArrayList<>();
-        private int nextControllerFace;
 
         private BridgeProxy(BridgeEndpoint endpoint, World world,
                             BlockPos targetPos, EntityChannelSpark spark) {
@@ -305,32 +302,7 @@ public final class ChannelSparkNetwork {
             return proxy;
         }
 
-        private AENetworkProxy createControllerOuterProxy(
-                String suffix, AEPartLocation face,
-                DimensionalCoord controllerLocation) {
-            if (face == null || face.getFacing() == null
-                    || controllerLocation == null) {
-                return null;
-            }
-            EnumFacing outward = face.getFacing();
-            BlockPos position = new BlockPos(
-                    controllerLocation.x + outward.getFrontOffsetX(),
-                    controllerLocation.y + outward.getFrontOffsetY(),
-                    controllerLocation.z + outward.getFrontOffsetZ());
-            DimensionalCoord location = new DimensionalCoord(
-                    controllerLocation.getWorld(), position);
-            EnumSet<EnumFacing> sides = EnumSet.of(outward.getOpposite());
-            ProxyHost host = new ProxyHost(this.anchor, location, sides);
-            AENetworkProxy proxy = new AENetworkProxy(host,
-                    "botania_applie_channel_spark_outer_" + suffix,
-                    ItemStack.EMPTY, true);
-            host.setProxy(proxy);
-            proxy.setFlags(GridFlags.DENSE_CAPACITY,
-                    GridFlags.CANNOT_CARRY_COMPRESSED);
-            proxy.setValidSides(sides);
-            proxy.onReady();
-            return proxy;
-        }
+
 
         private boolean ensureControllerFaceConnection(
                 IGridNode controller, AENetworkProxy proxy,
@@ -362,9 +334,7 @@ public final class ChannelSparkNetwork {
             return controllerChannelProxies.size();
         }
 
-        private List<AENetworkProxy> getControllerOuterProxies() {
-            return controllerOuterProxies;
-        }
+
 
         /**
          * Allocate one source face for one remote spark output. A remote
@@ -373,14 +343,7 @@ public final class ChannelSparkNetwork {
          * Cycling in the declared face order keeps all unused controller
          * faces available as the network grows.
          */
-        private AENetworkProxy acquireControllerOuterProxy() {
-            if (controllerOuterProxies.isEmpty()) {
-                return null;
-            }
-            int index = nextControllerFace % controllerOuterProxies.size();
-            nextControllerFace = (index + 1) % controllerOuterProxies.size();
-            return controllerOuterProxies.get(index);
-        }
+
 
         private boolean createControllerChannelInputs(IGridNode controller) {
             if (controller == null) {
@@ -419,7 +382,6 @@ public final class ChannelSparkNetwork {
                     destroyControllerInputs();
                     return false;
                 }
-
                 controllerChannelProxies.add(channelProxy);
                 controllerFaces.add(face);
                 if (!ensureControllerFaceConnection(controller, channelProxy, face)) {
@@ -489,13 +451,8 @@ public final class ChannelSparkNetwork {
             for (AENetworkProxy proxy : controllerChannelProxies) {
                 proxy.invalidate();
             }
-            for (AENetworkProxy proxy : controllerOuterProxies) {
-                proxy.invalidate();
-            }
             controllerChannelProxies.clear();
-            controllerOuterProxies.clear();
             controllerFaces.clear();
-            nextControllerFace = 0;
             destroyConnections(attachments);
             attachments.clear();
         }
@@ -506,8 +463,6 @@ public final class ChannelSparkNetwork {
                 return false;
             }
             if (endpoint.controllerFace) {
-                // Physical controller faces can be occupied after creation;
-                // reuse the bridge based on its own live input connections.
                 return hasControllerInputsInGrid(endpoint.node)
                         && innerNode() != null && outerNode() != null
                         && safeGrid(innerNode()) == safeGrid(endpoint.node)
@@ -526,13 +481,8 @@ public final class ChannelSparkNetwork {
             for (AENetworkProxy proxy : controllerChannelProxies) {
                 proxy.invalidate();
             }
-            for (AENetworkProxy proxy : controllerOuterProxies) {
-                proxy.invalidate();
-            }
             controllerChannelProxies.clear();
-            controllerOuterProxies.clear();
             controllerFaces.clear();
-            nextControllerFace = 0;
             outerProxy.invalidate();
             innerProxy.invalidate();
         }
@@ -738,12 +688,8 @@ public final class ChannelSparkNetwork {
         if (main == null || nearby == null) {
             return result;
         }
-        BridgeEndpoint mainEndpoint = selectP2PEndpoint(
-                findBridgeEndpoints(main.world, main.getTargetPos()), main);
-        Object sourceGrid = mainEndpoint == null
-                ? null : safeGrid(mainEndpoint.node);
-        IdentityHashMap<Object, EntityChannelSpark> representatives =
-                new IdentityHashMap<>();
+        List<EntityChannelSpark> representatives = new ArrayList<>();
+        IGridNode sourceNode = getSparkEndpointNode(main);
         for (EntityChannelSpark candidate : nearby) {
             if (candidate == null || candidate == main || candidate.isDead
                     || candidate.world != main.world
@@ -753,20 +699,24 @@ public final class ChannelSparkNetwork {
                     || !hasUsableEndpoint(candidate)) {
                 continue;
             }
-            BridgeEndpoint endpoint = selectP2PEndpoint(
-                    findBridgeEndpoints(candidate.world, candidate.getTargetPos()),
-                    candidate);
-            Object targetGrid = endpoint == null ? null : safeGrid(endpoint.node);
-            if (targetGrid == null || targetGrid == sourceGrid) {
+            IGridNode targetNode = getSparkEndpointNode(candidate);
+            if (targetNode == null || sameGrid(sourceNode, targetNode)) {
                 continue;
             }
-            EntityChannelSpark previous = representatives.get(targetGrid);
-            if (previous == null || isEarlier(candidate, previous)) {
-                representatives.put(targetGrid, candidate);
+            int existingIndex = -1;
+            for (int index = 0; index < representatives.size(); index++) {
+                if (sameSparkNetwork(candidate, representatives.get(index))) {
+                    existingIndex = index;
+                    break;
+                }
+            }
+            if (existingIndex < 0) {
+                representatives.add(candidate);
+            } else if (isEarlier(candidate, representatives.get(existingIndex))) {
+                representatives.set(existingIndex, candidate);
             }
         }
-        result.addAll(representatives.values());
-        Collections.sort(result, new Comparator<EntityChannelSpark>() {
+        Collections.sort(representatives, new Comparator<EntityChannelSpark>() {
             @Override
             public int compare(EntityChannelSpark first, EntityChannelSpark second) {
                 if (first.getPlacementOrder() != second.getPlacementOrder()) {
@@ -776,6 +726,7 @@ public final class ChannelSparkNetwork {
                 return Integer.compare(first.getEntityId(), second.getEntityId());
             }
         });
+        result.addAll(representatives);
         return result;
     }
 
@@ -813,6 +764,55 @@ public final class ChannelSparkNetwork {
      * representative for each destination grid, so one main/target network
      * pair can never produce the fan of duplicate links shown by AE2 viewers.
      */
+    private static IGridNode getSparkEndpointNode(EntityChannelSpark spark) {
+        if (spark == null || spark.world == null || !spark.hasTarget()) {
+            return null;
+        }
+        try {
+            BridgeEndpoint endpoint = selectP2PEndpoint(
+                    findBridgeEndpoints(spark.world, spark.getTargetPos()), spark);
+            return endpoint == null ? null : endpoint.node;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static boolean sameGrid(IGridNode first, IGridNode second) {
+        if (first == null || second == null) {
+            return false;
+        }
+        Object firstGrid = safeGrid(first);
+        Object secondGrid = safeGrid(second);
+        if (firstGrid == null || secondGrid == null) {
+            return false;
+        }
+        if (firstGrid == secondGrid || firstGrid.equals(secondGrid)) {
+            return true;
+        }
+        try {
+            Set<IGridNode> firstNodes = Collections.newSetFromMap(
+                    new IdentityHashMap<IGridNode, Boolean>());
+            for (IGridNode node : first.getGrid().getNodes()) {
+                if (node != null) {
+                    firstNodes.add(node);
+                }
+            }
+            for (IGridNode node : second.getGrid().getNodes()) {
+                if (node != null && firstNodes.contains(node)) {
+                    return true;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return false;
+    }
+
+    private static boolean sameSparkNetwork(EntityChannelSpark first,
+                                            EntityChannelSpark second) {
+        return sameGrid(getSparkEndpointNode(first),
+                getSparkEndpointNode(second));
+    }
+
     private static List<EntityChannelSpark> collectUniqueEndpointSparks(
             EntityChannelSpark main, List<EntityChannelSpark> network,
             BridgeProxy mainProxy) {
@@ -820,27 +820,30 @@ public final class ChannelSparkNetwork {
         if (main == null || network == null || mainProxy == null) {
             return result;
         }
-        Object sourceGrid = safeGrid(mainProxy.outerNode());
-        IdentityHashMap<Object, EntityChannelSpark> representatives =
-                new IdentityHashMap<>();
+        List<EntityChannelSpark> representatives = new ArrayList<>();
         for (EntityChannelSpark spark : network) {
             if (spark == null || spark == main || spark.isMainChannelSpark()
                     || !hasUsableEndpoint(spark)) {
                 continue;
             }
-            BridgeEndpoint endpoint = selectP2PEndpoint(
-                    findBridgeEndpoints(spark.world, spark.getTargetPos()), spark);
-            Object targetGrid = endpoint == null ? null : safeGrid(endpoint.node);
-            if (targetGrid == null || targetGrid == sourceGrid) {
+            IGridNode targetNode = getSparkEndpointNode(spark);
+            if (targetNode == null || sameGrid(targetNode, mainProxy.outerNode())) {
                 continue;
             }
-            EntityChannelSpark previous = representatives.get(targetGrid);
-            if (previous == null || isEarlier(spark, previous)) {
-                representatives.put(targetGrid, spark);
+            int existingIndex = -1;
+            for (int index = 0; index < representatives.size(); index++) {
+                if (sameSparkNetwork(spark, representatives.get(index))) {
+                    existingIndex = index;
+                    break;
+                }
+            }
+            if (existingIndex < 0) {
+                representatives.add(spark);
+            } else if (isEarlier(spark, representatives.get(existingIndex))) {
+                representatives.set(existingIndex, spark);
             }
         }
-        result.addAll(representatives.values());
-        Collections.sort(result, new Comparator<EntityChannelSpark>() {
+        Collections.sort(representatives, new Comparator<EntityChannelSpark>() {
             @Override
             public int compare(EntityChannelSpark first, EntityChannelSpark second) {
                 if (first.getPlacementOrder() != second.getPlacementOrder()) {
@@ -850,6 +853,7 @@ public final class ChannelSparkNetwork {
                 return Integer.compare(first.getEntityId(), second.getEntityId());
             }
         });
+        result.addAll(representatives);
         return result;
     }
 
@@ -881,12 +885,10 @@ public final class ChannelSparkNetwork {
         if (spark == null || spark.isDead || spark.world == null || spark.world.isRemote) {
             return;
         }
-
         if (!isPrimaryInBlock(spark)) {
             clear(spark);
             return;
         }
-
         removeInvalidLinks(spark);
         int radius = ChannelSparkConfig.getTransferRadius();
         double maxDistance = (double) radius * (double) radius;
@@ -895,16 +897,11 @@ public final class ChannelSparkNetwork {
                 spark.posX + radius, spark.posY + radius, spark.posZ + radius);
         List<EntityChannelSpark> nearby = spark.world.getEntitiesWithinAABB(
                 EntityChannelSpark.class, search);
-
         EntityChannelSpark main = findLocalMainSpark(spark, nearby, maxDistance);
         if (main != null) {
-            // Reconcile the entire logical star from one canonical list. This
-            // removes old fan-out links before adding the one allowed pair for
-            // each distinct AE2 destination network.
             reconcileLogicalLinks(main,
                     collectUniqueLogicalEndpoints(main, nearby, maxDistance));
         }
-
         cleanupBridgeRecords();
         reconcileAeBridges(spark);
     }
@@ -950,9 +947,6 @@ public final class ChannelSparkNetwork {
         if (firstLink != null && secondLink != null) {
             return;
         }
-
-        // Repair a half-link in place; the logical map contains one edge per
-        // main/output UUID pair and never creates a duplicate edge.
         first.getLinks().remove(secondId);
         second.getLinks().remove(firstId);
         first.getLinks().put(secondId, new Link(second, null));
@@ -1363,11 +1357,10 @@ if (network == null || network.isEmpty()) {
             return false;
         }
         if (endpoint.controllerFace) {
-            if (!proxy.createControllerChannelInputs(endpoint.node)) {
+            if (!proxy.createControllerChannelInputs(endpoint.node)
+                    || proxy.innerNode() == null || proxy.outerNode() == null) {
                 return false;
             }
-            // The six face proxies are the channel source pool. The main
-            // spark itself exposes one shared P2P endpoint to remote sparks.
             return proxy.attachControllerBridgeNodes(endpoint.node);
         }
         if (proxy.innerNode() == null || proxy.outerNode() == null
@@ -1532,6 +1525,7 @@ if (network == null || network.isEmpty()) {
         }
         PENDING_CHANNEL_CAPACITY.set(ChannelSparkConfig.getChannelCapacity());
         try {
+            // This is the same outer-node connection used by AE2 ME P2P.
             IGridConnection connection = AEApi.instance().grid()
                     .createGridConnection(first, second);
             registerConnection(connection);
