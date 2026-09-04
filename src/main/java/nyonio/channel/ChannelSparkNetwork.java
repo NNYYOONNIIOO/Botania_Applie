@@ -266,7 +266,7 @@ public final class ChannelSparkNetwork {
                     EnumSet.of(EnumFacing.DOWN));
             this.outerProxy = new AENetworkProxy(
                     outerHost, "botania_applie_channel_spark_outer", ItemStack.EMPTY,
-                    true);
+                    false);
             outerHost.setProxy(this.outerProxy);
             this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY,
                     GridFlags.CANNOT_CARRY_COMPRESSED);
@@ -274,8 +274,11 @@ public final class ChannelSparkNetwork {
             // The inner node is joined explicitly and must not expose six
             // synthetic physical cable sides. The outer node alone performs
             // world discovery through the block directly below the spark.
-            this.innerProxy.setValidSides(EnumSet.allOf(EnumFacing.class));
-            this.outerProxy.setValidSides(EnumSet.of(EnumFacing.DOWN));
+            // Both nodes are joined to their exact target through explicit
+            // INTERNAL connections below; no synthetic side may discover an
+            // EAST/+X neighbour or render a cable-like path.
+            this.innerProxy.setValidSides(EnumSet.noneOf(EnumFacing.class));
+            this.outerProxy.setValidSides(EnumSet.noneOf(EnumFacing.class));
             this.innerProxy.onReady();
             this.outerProxy.onReady();
         }
@@ -1010,7 +1013,7 @@ if (network == null || network.isEmpty()) {
     private static boolean attachMainProxy(BridgeProxy proxy,
                                                BridgeEndpoint endpoint) {
         if (proxy == null || endpoint == null || endpoint.node == null
-                || proxy.innerNode() == null || proxy.node() == null) {
+                || proxy.innerNode() == null || proxy.outerNode() == null) {
             return false;
         }
         Object endpointGrid = safeGrid(endpoint.node);
@@ -1018,30 +1021,23 @@ if (network == null || network.isEmpty()) {
             return false;
         }
         try {
-            // Both proxy nodes are attached to the local host internally,
-            // matching CableBusContainer's P2P part attachment. The inner
-            // node consumes the local compressed channel; the outer node is
-            // the dense P2P endpoint. Using a world-facing outer connection
-            // here creates visible cable paths and produces the screenshot's
-            // cable-like topology.
-            // The selected controller face controls channel allocation, but
-            // must not become the rendered connection direction. INTERNAL
-            // keeps the controller itself as the input point. An ordinary
-            // target uses the physical target-to-spark direction.
-            AEPartLocation localDirection = endpoint.controllerFace
-                    ? AEPartLocation.INTERNAL
-                    : proxy.attachmentDirection == null
-                    || proxy.attachmentDirection == AEPartLocation.INTERNAL
-                    ? AEPartLocation.UP : proxy.attachmentDirection;
+            // The main spark consumes the controller endpoint itself. The
+            // controller face order is only for channel allocation; INTERNAL
+            // keeps the physical P2P point at the controller block.
             IGridConnection localAttachment = GridConnection.create(
-                    endpoint.node, proxy.innerNode(), localDirection);
+                    endpoint.node, proxy.innerNode(), AEPartLocation.INTERNAL);
             proxy.attachments.add(localAttachment);
-            repathAfterConnection(endpoint.node, proxy.innerNode());
 
-            // World discovery of the outer node is asynchronous. The P2P
-            // builder validates it before creating the outer-to-outer edge;
-            // the local channel attachment is the only requirement here.
-            return safeGrid(proxy.innerNode()) == endpointGrid;
+            // The dense outer node is the shared P2P hub. Attach it to the
+            // same exact controller node instead of letting it scan a side.
+            IGridConnection outerAttachment = GridConnection.create(
+                    endpoint.node, proxy.outerNode(), AEPartLocation.INTERNAL);
+            proxy.attachments.add(outerAttachment);
+            repathAfterConnection(endpoint.node, proxy.innerNode());
+            repathAfterConnection(endpoint.node, proxy.outerNode());
+
+            return safeGrid(proxy.innerNode()) == endpointGrid
+                    && safeGrid(proxy.outerNode()) == endpointGrid;
         } catch (Throwable error) {
             logConnectionFailure("AE2 channel spark endpoint attachment",
                     endpoint.node, proxy.innerNode(), error);
@@ -1052,21 +1048,27 @@ if (network == null || network.isEmpty()) {
     private static boolean attachOutputProxy(BridgeProxy proxy,
                                               BridgeEndpoint endpoint) {
         if (proxy == null || endpoint == null || endpoint.node == null
-                || proxy.innerNode() == null || proxy.node() == null
+                || proxy.innerNode() == null || proxy.outerNode() == null
                 || safeGrid(endpoint.node) == null) {
             return false;
         }
         try {
-            // The regular node of an output belongs only to the AE network
-            // below that spark. It must not be joined to the hub's regular
-            // node: that would merge every output into a cable-like backbone.
+            // An output is bound only to the block directly below its spark.
+            // Its regular node stays on that local AE network and is never
+            // connected to the main spark's node/backbone.
             IGridConnection localConnection = GridConnection.create(
-                    endpoint.node, proxy.innerNode(),
-                    getInnerConnectionDirection(endpoint, proxy));
+                    endpoint.node, proxy.innerNode(), AEPartLocation.INTERNAL);
             proxy.attachments.add(localConnection);
+
+            // Its independent dense node is the P2P output endpoint.
+            IGridConnection outerConnection = GridConnection.create(
+                    endpoint.node, proxy.outerNode(), AEPartLocation.INTERNAL);
+            proxy.attachments.add(outerConnection);
             repathAfterConnection(endpoint.node, proxy.innerNode());
+            repathAfterConnection(endpoint.node, proxy.outerNode());
+
             return safeGrid(proxy.innerNode()) == safeGrid(endpoint.node)
-                    && safeGrid(proxy.node()) == safeGrid(endpoint.node);
+                    && safeGrid(proxy.outerNode()) == safeGrid(endpoint.node);
         } catch (Throwable error) {
             logConnectionFailure("AE2 channel spark output endpoint attachment",
                     endpoint.node, proxy.innerNode(), error);
