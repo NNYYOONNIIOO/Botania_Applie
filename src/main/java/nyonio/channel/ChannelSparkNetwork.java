@@ -249,8 +249,7 @@ public final class ChannelSparkNetwork {
                     && direction == endpoint.direction
                     && innerNode() != null && node() != null
                     && safeGrid(innerNode()) != null
-                    && safeGrid(innerNode()) == safeGrid(endpoint.node)
-                    && safeGrid(node()) == safeGrid(endpoint.node);
+                    && safeGrid(innerNode()) == safeGrid(endpoint.node);
         }
 
         private void destroy() {
@@ -916,7 +915,6 @@ if (network == null || network.isEmpty()) {
             IGridConnection localAttachment = GridConnection.create(
                     endpoint.node, proxy.innerNode(), endpoint.direction);
             proxy.attachments.add(localAttachment);
-            registerConnection(localAttachment);
             repathAfterConnection(endpoint.node, proxy.innerNode());
 
             // outerProxy is world-accessible, so its node discovers the
