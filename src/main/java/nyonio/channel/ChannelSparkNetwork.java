@@ -246,11 +246,8 @@ public final class ChannelSparkNetwork {
             // node on DOWN. Keep the inner proxy on that opposite physical
             // face so it can consume one local channel without becoming a
             // second world-facing endpoint.
-            EnumSet<EnumFacing> innerSides = face == null
-                    ? EnumSet.of(EnumFacing.DOWN)
-                    : EnumSet.of(face.getOpposite());
             ProxyHost innerHost = new ProxyHost(this.anchor, innerLocation,
-                    innerSides);
+                    EnumSet.noneOf(EnumFacing.class));
             this.innerProxy = new AENetworkProxy(
                     innerHost, "botania_applie_channel_spark_inner", ItemStack.EMPTY, false);
             innerHost.setProxy(this.innerProxy);
@@ -265,7 +262,7 @@ public final class ChannelSparkNetwork {
             this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY,
                     GridFlags.CANNOT_CARRY_COMPRESSED);
 
-            this.innerProxy.setValidSides(innerSides);
+            this.innerProxy.setValidSides(EnumSet.noneOf(EnumFacing.class));
             // Find the attached AE host directly below the spark, just as the
             // external side of a native ME P2P part does.
             this.outerProxy.setValidSides(EnumSet.of(EnumFacing.DOWN));
@@ -336,6 +333,23 @@ public final class ChannelSparkNetwork {
             return endpoint.direction.getFacing();
         }
         return EnumFacing.UP;
+    }
+
+    private static AEPartLocation getInnerConnectionDirection(
+            BridgeEndpoint endpoint, BridgeProxy proxy) {
+        // Controller faces are logical channel allocators. Connecting the
+        // local channel proxy through +X/+Y/... as a physical cable direction
+        // shifts the rendered endpoint to that face (the observed EAST
+        // offset). A controller can safely use an INTERNAL edge; the actual
+        // P2P/world-facing edge remains DOWN from the spark to its target.
+        if (endpoint != null && endpoint.controllerFace) {
+            return AEPartLocation.INTERNAL;
+        }
+        if (proxy != null && proxy.attachmentDirection != null
+                && proxy.attachmentDirection != AEPartLocation.INTERNAL) {
+            return proxy.attachmentDirection;
+        }
+        return AEPartLocation.UP;
     }
 
 
