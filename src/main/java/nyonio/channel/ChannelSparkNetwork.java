@@ -254,18 +254,23 @@ public final class ChannelSparkNetwork {
             this.innerProxy.setFlags(GridFlags.REQUIRE_CHANNEL,
                     GridFlags.COMPRESSED_CHANNEL);
 
+            // The outer node is the wireless/P2P side. It must not discover
+            // the same target block as the local inner node: doing so joins
+            // every target network into the cable-like topology visible in
+            // the current screenshot. Its only grid edge is the explicit
+            // outer-to-outer P2P connection below.
             ProxyHost outerHost = new ProxyHost(this.anchor, outerLocation,
-                    EnumSet.of(EnumFacing.DOWN));
+                    EnumSet.noneOf(EnumFacing.class));
             this.outerProxy = new AENetworkProxy(
-                    outerHost, "botania_applie_channel_spark_outer", ItemStack.EMPTY, true);
+                    outerHost, "botania_applie_channel_spark_outer", ItemStack.EMPTY, false);
             outerHost.setProxy(this.outerProxy);
             this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY,
                     GridFlags.CANNOT_CARRY_COMPRESSED);
 
             this.innerProxy.setValidSides(EnumSet.noneOf(EnumFacing.class));
-            // Find the attached AE host directly below the spark, just as the
-            // external side of a native ME P2P part does.
-            this.outerProxy.setValidSides(EnumSet.of(EnumFacing.DOWN));
+            // Do not world-discover the target here. The target network is
+            // represented by innerProxy; outerProxy is only the P2P bridge.
+            this.outerProxy.setValidSides(EnumSet.noneOf(EnumFacing.class));
             this.innerProxy.onReady();
             this.outerProxy.onReady();
         }
