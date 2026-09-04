@@ -217,7 +217,7 @@ public final class ChannelSparkNetwork {
 
             ProxyHost outerHost = new ProxyHost(this.anchor, location);
             this.outerProxy = new AENetworkProxy(
-                    outerHost, "botania_applie_channel_spark_outer", ItemStack.EMPTY, true);
+                    outerHost, "botania_applie_channel_spark_outer", ItemStack.EMPTY, false);
             outerHost.setProxy(this.outerProxy);
             this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY,
                     GridFlags.CANNOT_CARRY_COMPRESSED);
@@ -244,8 +244,7 @@ public final class ChannelSparkNetwork {
                     && direction == endpoint.direction
                     && innerNode() != null && node() != null
                     && safeGrid(innerNode()) != null
-                    && safeGrid(innerNode()) == safeGrid(endpoint.node)
-                    && safeGrid(node()) == safeGrid(endpoint.node);
+                    && safeGrid(innerNode()) == safeGrid(endpoint.node);
         }
 
         private void destroy() {
@@ -857,9 +856,8 @@ if (network == null || network.isEmpty()) {
             return build;
         }
 
-        Object mainGrid = safeGrid(mainProxy.node());
         Object secondGrid = safeGrid(secondEndpoint.node);
-        if (mainGrid == null || secondGrid == null || mainGrid == secondGrid) {
+        if (mainProxy.node() == null || secondGrid == null) {
             return build;
         }
 
@@ -904,19 +902,16 @@ if (network == null || network.isEmpty()) {
             return false;
         }
         try {
-            // The inner node is the only local attachment and consumes one
-            // compressed channel, just like PartP2PTunnelME.getProxy().
-            // The outer node is world-accessible and attaches to the target
-            // host through GridNode.findConnections(), just like AE2's
-            // PartP2PTunnelME.outerProxy. Directly attaching the outer node
-            // to the target would make this bridge behave like a cable.
+            // Only the inner node belongs to the local network and consumes
+            // a compressed channel. The outer node must stay isolated until
+            // it is connected to the other outer nodes below; attaching it
+            // to endpoint.node would merge the real networks and reproduce
+            // the dense-cable behaviour this bridge is intended to avoid.
             IGridConnection localAttachment = GridConnection.create(
                     endpoint.node, proxy.innerNode(), endpoint.direction);
             proxy.attachments.add(localAttachment);
             repathAfterConnection(endpoint.node, proxy.innerNode());
-            proxy.node().updateState();
-            return safeGrid(proxy.innerNode()) == endpointGrid
-                    && safeGrid(proxy.node()) == endpointGrid;
+            return safeGrid(proxy.innerNode()) == endpointGrid;
         } catch (Throwable error) {
             logConnectionFailure("AE2 channel spark endpoint attachment",
                     endpoint.node, proxy.innerNode(), error);
