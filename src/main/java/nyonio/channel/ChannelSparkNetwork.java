@@ -238,8 +238,15 @@ public final class ChannelSparkNetwork {
             DimensionalCoord innerLocation = new DimensionalCoord(world, attachedPos);
             DimensionalCoord outerLocation = new DimensionalCoord(world, sparkPos);
 
+            // GridConnection.create(first, second, UP) checks the second
+            // node on DOWN. Keep the inner proxy on that opposite physical
+            // face so it can consume one local channel without becoming a
+            // second world-facing endpoint.
+            EnumSet<EnumFacing> innerSides = face == null
+                    ? EnumSet.of(EnumFacing.DOWN)
+                    : EnumSet.of(face.getOpposite());
             ProxyHost innerHost = new ProxyHost(this.anchor, innerLocation,
-                    EnumSet.noneOf(EnumFacing.class));
+                    innerSides);
             this.innerProxy = new AENetworkProxy(
                     innerHost, "botania_applie_channel_spark_inner", ItemStack.EMPTY, false);
             innerHost.setProxy(this.innerProxy);
@@ -254,10 +261,7 @@ public final class ChannelSparkNetwork {
             this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY,
                     GridFlags.CANNOT_CARRY_COMPRESSED);
 
-            EnumSet<EnumFacing> validSides = face == null
-                    ? EnumSet.noneOf(EnumFacing.class)
-                    : EnumSet.of(face.getOpposite());
-            this.innerProxy.setValidSides(validSides);
+            this.innerProxy.setValidSides(innerSides);
             // Find the attached AE host directly below the spark, just as the
             // external side of a native ME P2P part does.
             this.outerProxy.setValidSides(EnumSet.of(EnumFacing.DOWN));
@@ -278,8 +282,7 @@ public final class ChannelSparkNetwork {
                     && direction == endpoint.direction
                     && innerNode() != null && node() != null
                     && safeGrid(innerNode()) != null
-                    && safeGrid(innerNode()) == safeGrid(endpoint.node)
-                    && safeGrid(node()) == safeGrid(endpoint.node);
+                    && safeGrid(innerNode()) == safeGrid(endpoint.node);
         }
 
         private void destroy() {
@@ -989,8 +992,11 @@ if (network == null || network.isEmpty()) {
             proxy.attachments.add(localAttachment);
             repathAfterConnection(endpoint.node, proxy.innerNode());
 
-            return safeGrid(proxy.innerNode()) == endpointGrid
-                    && safeGrid(proxy.node()) == endpointGrid;
+            // The outer node is world-accessible and may finish discovering
+            // the adjacent controller on the next AE2 pathing tick. The
+            // inner node is the channel-consuming local endpoint and is the
+            // only node that must be attached before this proxy is retained.
+            return safeGrid(proxy.innerNode()) == endpointGrid;
         } catch (Throwable error) {
             logConnectionFailure("AE2 channel spark endpoint attachment",
                     endpoint.node, proxy.innerNode(), error);
