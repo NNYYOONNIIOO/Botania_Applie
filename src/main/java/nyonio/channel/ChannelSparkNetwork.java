@@ -989,19 +989,6 @@ if (network == null || network.isEmpty()) {
             proxy.attachments.add(localAttachment);
             repathAfterConnection(endpoint.node, proxy.innerNode());
 
-            // A real ME P2P part discovers its adjacent host through the
-            // world-facing outer proxy. A machine such as an ME interface may
-            // expose only an INTERNAL node, so AE2 cannot discover it from the
-            // synthetic world position. In that case attach the outer side to
-            // the exact target node using the physical UP face of the block,
-            // never INTERNAL and never the controller's first (+X) face.
-            if (safeGrid(proxy.node()) != endpointGrid) {
-                IGridConnection outerAttachment = GridConnection.create(
-                        endpoint.node, proxy.node(), proxy.attachmentDirection);
-                proxy.attachments.add(outerAttachment);
-                repathAfterConnection(endpoint.node, proxy.node());
-            }
-
             return safeGrid(proxy.innerNode()) == endpointGrid
                     && safeGrid(proxy.node()) == endpointGrid;
         } catch (Throwable error) {
