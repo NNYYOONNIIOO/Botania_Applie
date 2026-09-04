@@ -235,8 +235,12 @@ public final class ChannelSparkNetwork {
                 attachedPos = new BlockPos(0, 0, 0);
             }
             BlockPos sparkPos = attachedPos.up();
-            DimensionalCoord innerLocation = new DimensionalCoord(world, attachedPos);
             DimensionalCoord outerLocation = new DimensionalCoord(world, sparkPos);
+            // Native ME P2P keeps its local and external proxy at the same
+            // part position. The controller/cable is reached through the
+            // explicit local connection below, while the external node sees
+            // the block below through its DOWN side.
+            DimensionalCoord innerLocation = outerLocation;
 
             // GridConnection.create(first, second, UP) checks the second
             // node on DOWN. Keep the inner proxy on that opposite physical
@@ -317,14 +321,21 @@ public final class ChannelSparkNetwork {
 
     private static EnumFacing getProxyAttachmentFace(BridgeEndpoint endpoint,
                                                        EntityChannelSpark spark) {
+        // The controller face is the logical channel allocator, not the
+        // physical location of the spark. Geometry must follow the actual
+        // spark-to-target vector; otherwise selecting the first controller
+        // face (+X) moves the rendered connection toward EAST.
+        AEPartLocation physical = getCableAttachmentDirection(spark);
+        if (physical != null && physical != AEPartLocation.INTERNAL
+                && physical.getFacing() != null) {
+            return physical.getFacing();
+        }
         if (endpoint != null && endpoint.direction != null
                 && endpoint.direction != AEPartLocation.INTERNAL
                 && endpoint.direction.getFacing() != null) {
             return endpoint.direction.getFacing();
         }
-        AEPartLocation direction = getCableAttachmentDirection(spark);
-        return direction == null || direction == AEPartLocation.INTERNAL
-                ? EnumFacing.UP : direction.getFacing();
+        return EnumFacing.UP;
     }
 
 
@@ -625,16 +636,9 @@ public final class ChannelSparkNetwork {
 
     private static BridgeEndpoint selectP2PEndpoint(
             List<BridgeEndpoint> endpoints, EntityChannelSpark spark) {
-        if (endpoints != null && spark != null) {
-            AEPartLocation physicalDirection = getCableAttachmentDirection(spark);
-            if (physicalDirection != null) {
-                for (BridgeEndpoint endpoint : endpoints) {
-                    if (endpoint != null && endpoint.direction == physicalDirection) {
-                        return endpoint;
-                    }
-                }
-            }
-        }
+        // Keep the controller allocator's deterministic
+        // +X,+Y,+Z,-X,-Y,-Z order. Physical direction is handled separately
+        // by getProxyAttachmentFace and attachBridgeProxy.
         return selectP2PEndpoint(endpoints);
     }
 
@@ -984,9 +988,11 @@ if (network == null || network.isEmpty()) {
             // the dense P2P endpoint. Using a world-facing outer connection
             // here creates visible cable paths and produces the screenshot's
             // cable-like topology.
-            AEPartLocation localDirection = endpoint.direction == null
-                    || endpoint.direction == AEPartLocation.INTERNAL
-                    ? proxy.attachmentDirection : endpoint.direction;
+            // endpoint.direction identifies the controller face whose channel
+            // capacity is being used. It must not determine the geometry of
+            // the synthetic connection: the proxy is physically above the
+            // target, so the connection always leaves the target via UP.
+            AEPartLocation localDirection = proxy.attachmentDirection;
             IGridConnection localAttachment = GridConnection.create(
                     endpoint.node, proxy.innerNode(), localDirection);
             proxy.attachments.add(localAttachment);
