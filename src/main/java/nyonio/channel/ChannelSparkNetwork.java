@@ -257,23 +257,31 @@ public final class ChannelSparkNetwork {
             this.innerProxy.setFlags(GridFlags.REQUIRE_CHANNEL,
                     GridFlags.COMPRESSED_CHANNEL);
 
-            // This is the world-facing side of the P2P tunnel. It discovers
-            // exactly the target block below the spark, like AE2's native
-            // PartP2PTunnelME outerProxy. The inner node remains the local
-            // channel consumer; the outer node is the dense P2P endpoint.
+            // Ordinary output sparks use the native world-facing P2P side and
+            // discover the block directly below them. The main spark targets
+            // an ME controller; its node is CANNOT_CARRY, so it must be
+            // attached explicitly from the carrying proxy instead of being
+            // discovered as an arbitrary controller face.
+            boolean controllerEndpoint = endpoint != null
+                    && endpoint.controllerFace;
             ProxyHost outerHost = new ProxyHost(this.anchor, outerLocation,
-                    EnumSet.of(EnumFacing.DOWN));
+                    controllerEndpoint
+                            ? EnumSet.noneOf(EnumFacing.class)
+                            : EnumSet.of(EnumFacing.DOWN));
             this.outerProxy = new AENetworkProxy(
-                    outerHost, "botania_applie_channel_spark_outer", ItemStack.EMPTY, true);
+                    outerHost, "botania_applie_channel_spark_outer", ItemStack.EMPTY,
+                    !controllerEndpoint);
             outerHost.setProxy(this.outerProxy);
             this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY,
                     GridFlags.CANNOT_CARRY_COMPRESSED);
 
             this.innerProxy.setValidSides(EnumSet.allOf(EnumFacing.class));
-            // GridNode.findConnections() now looks one block DOWN and asks
-            // that host for its UP-side node. Do not add a second manual
-            // outer connection: this preserves the native P2P boundary.
-            this.outerProxy.setValidSides(EnumSet.of(EnumFacing.DOWN));
+            // Only ordinary outputs use world discovery. The controller
+            // input is connected explicitly below so the controller block is
+            // the input point and no +X side becomes a visible cable edge.
+            this.outerProxy.setValidSides(controllerEndpoint
+                    ? EnumSet.noneOf(EnumFacing.class)
+                    : EnumSet.of(EnumFacing.DOWN));
             this.innerProxy.onReady();
             this.outerProxy.onReady();
         }
@@ -1039,6 +1047,17 @@ if (network == null || network.isEmpty()) {
                     firstNode, secondNode, localDirection);
             proxy.attachments.add(localAttachment);
             repathAfterConnection(firstNode, secondNode);
+
+            if (endpoint.controllerFace) {
+                // The controller input has no world-facing side. Put the
+                // dense outer node in the same controller grid explicitly,
+                // with the carrying proxy as side A so AE2 can compute a
+                // valid route despite the controller's CANNOT_CARRY flag.
+                IGridConnection outerAttachment = GridConnection.create(
+                        proxy.node(), endpoint.node, AEPartLocation.INTERNAL);
+                proxy.attachments.add(outerAttachment);
+                repathAfterConnection(proxy.node(), endpoint.node);
+            }
 
             // The outer node is world-accessible and may finish discovering
             // the adjacent controller on the next AE2 pathing tick. The
