@@ -1004,10 +1004,15 @@ if (network == null || network.isEmpty()) {
             // cable-like topology.
             // Keep the carrying proxy as side A. A controller node has
             // CANNOT_CARRY, so making it side A gives AE2 no controller route
-            // and prevents channels from reaching the spark. The proxy is
-            // above the target, therefore this edge points DOWN from the
-            // spark toward the target block.
-            AEPartLocation localDirection = proxy.attachmentDirection == null
+            // and prevents channels from reaching the spark. Controller faces
+            // are logical channel allocators, not the spark's physical EAST
+            // connection: use an INTERNAL edge for the selected controller
+            // face. The outer world node still discovers the target block
+            // through DOWN. Ordinary cable endpoints retain their physical
+            // edge from the spark toward the block below.
+            AEPartLocation localDirection = endpoint.controllerFace
+                    ? AEPartLocation.INTERNAL
+                    : proxy.attachmentDirection == null
                     || proxy.attachmentDirection == AEPartLocation.INTERNAL
                     ? AEPartLocation.DOWN
                     : proxy.attachmentDirection.getOpposite();
