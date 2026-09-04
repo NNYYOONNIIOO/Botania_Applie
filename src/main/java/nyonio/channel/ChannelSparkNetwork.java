@@ -223,7 +223,7 @@ public final class ChannelSparkNetwork {
 
             ProxyHost outerHost = new ProxyHost(this.anchor, location);
             this.outerProxy = new AENetworkProxy(
-                    outerHost, "botania_applie_channel_spark_outer", ItemStack.EMPTY, true);
+                    outerHost, "botania_applie_channel_spark_outer", ItemStack.EMPTY, false);
             outerHost.setProxy(this.outerProxy);
             this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY,
                     GridFlags.CANNOT_CARRY_COMPRESSED);
@@ -231,7 +231,7 @@ public final class ChannelSparkNetwork {
             if (face != null) {
                 EnumSet<EnumFacing> validSides = EnumSet.of(face.getOpposite());
                 this.innerProxy.setValidSides(validSides);
-                this.outerProxy.setValidSides(validSides);
+                this.outerProxy.setValidSides(EnumSet.noneOf(EnumFacing.class));
             }
             this.innerProxy.onReady();
             this.outerProxy.onReady();
@@ -250,7 +250,8 @@ public final class ChannelSparkNetwork {
                     && direction == endpoint.direction
                     && innerNode() != null && node() != null
                     && safeGrid(innerNode()) != null
-                    && safeGrid(innerNode()) == safeGrid(endpoint.node);
+                    && safeGrid(innerNode()) == safeGrid(endpoint.node)
+                    && safeGrid(node()) == safeGrid(endpoint.node);
         }
 
         private void destroy() {
@@ -931,30 +932,22 @@ if (network == null || network.isEmpty()) {
             return false;
         }
         try {
-            // Only the inner node belongs to the local network and consumes
-            // a compressed channel. The outer node must stay isolated until
-            // it is connected to the other outer nodes below; attaching it
-            // to endpoint.node would merge the real networks and reproduce
-            // the dense-cable behaviour this bridge is intended to avoid.
+            // Both proxy nodes are attached to the local host internally,
+            // matching CableBusContainer's P2P part attachment. The inner
+            // node consumes the local compressed channel; the outer node is
+            // the dense P2P endpoint. Using a world-facing outer connection
+            // here creates visible cable paths and produces the screenshot's
+            // cable-like topology.
             IGridConnection localAttachment = GridConnection.create(
                     endpoint.node, proxy.innerNode(), endpoint.direction);
             proxy.attachments.add(localAttachment);
             repathAfterConnection(endpoint.node, proxy.innerNode());
 
-            // outerProxy is world-accessible, so its node discovers the
-            // target host from its synthetic P2P location during onReady().
-            // Mark that physical-looking attachment wireless as well; AE2's
-            // cable renderer must not turn it into an ordinary cable edge.
-            for (IGridConnection connection : proxy.node().getConnections()) {
-                try {
-                    IGridNode other = connection.getOtherSide(proxy.node());
-                    if (safeGrid(other) == endpointGrid) {
-                        registerConnection(connection);
-                    }
-                } catch (Throwable ignored) {
-                    // The grid may be rebuilding while a spark is ticking.
-                }
-            }
+            IGridConnection outerAttachment = GridConnection.create(
+                    endpoint.node, proxy.node(), AEPartLocation.INTERNAL);
+            proxy.attachments.add(outerAttachment);
+            repathAfterConnection(endpoint.node, proxy.node());
+
             return safeGrid(proxy.innerNode()) == endpointGrid
                     && safeGrid(proxy.node()) == endpointGrid;
         } catch (Throwable error) {
