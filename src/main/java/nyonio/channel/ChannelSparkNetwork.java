@@ -964,13 +964,11 @@ if (network == null || network.isEmpty()) {
         try {
             secondProxy = new BridgeProxy(secondEndpoint, second.world,
                     second.getTargetPos(), second);
-            // An output spark's local P2P proxy belongs to the shared P2P
-            // backbone, not to the remote network below that output. The
-            // remote network is exposed only by secondProxy.outerProxy via
-            // its world-facing DOWN side. Attaching this inner node directly
-            // to secondEndpoint would merge every output network into the
-            // dense-cable topology shown in the current screenshot.
-            if (!attachInnerProxyToNetwork(secondProxy, mainProxy.innerNode())) {
+            // Each output keeps its regular P2P node in its own attached
+            // network, just like a native ME-P2P output part. Only the outer
+            // nodes form the wireless P2P edge; sharing mainProxy.innerNode()
+            // would turn all output branches into one dense cable path.
+            if (!attachBridgeProxy(secondProxy, secondEndpoint)) {
                 secondProxy.destroy();
                 return build;
             }
@@ -1013,21 +1011,30 @@ if (network == null || network.isEmpty()) {
             // the dense P2P endpoint. Using a world-facing outer connection
             // here creates visible cable paths and produces the screenshot's
             // cable-like topology.
-            // AE2 creates the local P2P-side connection with the target
-            // network node as side A and the proxy as side B. Controller faces
-            // select channel capacity but do not define the spark's rendered
-            // geometry, so keep them logical with an INTERNAL edge. For an
-            // ordinary target, use the physical target-to-spark direction.
-            AEPartLocation localDirection = endpoint.controllerFace
-                    ? AEPartLocation.INTERNAL
-                    : proxy.attachmentDirection == null
-                    || proxy.attachmentDirection == AEPartLocation.INTERNAL
-                    ? AEPartLocation.UP
-                    : proxy.attachmentDirection;
+            // Controller faces select channel capacity but do not define the
+            // spark's rendered geometry. A controller is CANNOT_CARRY, so the
+            // carrying proxy must be side A for the controller edge; this
+            // leaves the controller itself as the input block without making
+            // its +X face the visible spark connection. Ordinary target
+            // networks use their physical target-to-spark direction.
+            IGridNode firstNode;
+            IGridNode secondNode;
+            AEPartLocation localDirection;
+            if (endpoint.controllerFace) {
+                firstNode = proxy.innerNode();
+                secondNode = endpoint.node;
+                localDirection = AEPartLocation.INTERNAL;
+            } else {
+                firstNode = endpoint.node;
+                secondNode = proxy.innerNode();
+                localDirection = proxy.attachmentDirection == null
+                        || proxy.attachmentDirection == AEPartLocation.INTERNAL
+                        ? AEPartLocation.UP : proxy.attachmentDirection;
+            }
             IGridConnection localAttachment = GridConnection.create(
-                    endpoint.node, proxy.innerNode(), localDirection);
+                    firstNode, secondNode, localDirection);
             proxy.attachments.add(localAttachment);
-            repathAfterConnection(endpoint.node, proxy.innerNode());
+            repathAfterConnection(firstNode, secondNode);
 
             // The outer node is world-accessible and may finish discovering
             // the adjacent controller on the next AE2 pathing tick. The
@@ -1037,29 +1044,6 @@ if (network == null || network.isEmpty()) {
         } catch (Throwable error) {
             logConnectionFailure("AE2 channel spark endpoint attachment",
                     endpoint.node, proxy.innerNode(), error);
-            return false;
-        }
-    }
-
-    private static boolean attachInnerProxyToNetwork(BridgeProxy proxy,
-                                                      IGridNode hostNode) {
-        if (proxy == null || hostNode == null || proxy.innerNode() == null
-                || safeGrid(hostNode) == null) {
-            return false;
-        }
-        try {
-            // This is the equivalent of a P2P part's regular getProxy()
-            // joining the cable bus that hosts the tunnel. It is deliberately
-            // not registered as wireless: only the outer-to-outer edge is the
-            // wireless P2P capacity edge.
-            IGridConnection connection = GridConnection.create(
-                    hostNode, proxy.innerNode(), AEPartLocation.INTERNAL);
-            proxy.attachments.add(connection);
-            repathAfterConnection(hostNode, proxy.innerNode());
-            return safeGrid(proxy.innerNode()) == safeGrid(hostNode);
-        } catch (Throwable error) {
-            logConnectionFailure("AE2 channel spark P2P backbone attachment",
-                    hostNode, proxy.innerNode(), error);
             return false;
         }
     }
