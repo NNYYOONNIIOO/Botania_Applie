@@ -1076,6 +1076,40 @@ if (network == null || network.isEmpty()) {
         }
     }
 
+    /**
+     * A controller exposes six logical channel faces. The first selected face
+     * is attached while creating the main proxy; the remaining faces must be
+     * attached to the same channel node in the required +X,+Y,+Z,-X,-Y,-Z
+     * order. These INTERNAL edges keep the controller itself as the input
+     * point and do not render a cable toward the first (+X) face.
+     */
+    private static boolean attachAdditionalControllerChannels(
+            BridgeProxy proxy, List<BridgeEndpoint> endpoints) {
+        if (proxy == null || proxy.innerNode() == null
+                || endpoints == null || endpoints.isEmpty()) {
+            return false;
+        }
+        boolean success = true;
+        for (BridgeEndpoint endpoint : endpoints) {
+            if (endpoint == null || !endpoint.controllerFace
+                    || endpoint.node == null || endpoint.node == proxy.anchor
+                    || hasDirectConnection(proxy.innerNode(), endpoint.node)) {
+                continue;
+            }
+            try {
+                IGridConnection connection = GridConnection.create(
+                        proxy.innerNode(), endpoint.node, AEPartLocation.INTERNAL);
+                proxy.attachments.add(connection);
+                repathAfterConnection(proxy.innerNode(), endpoint.node);
+            } catch (Throwable error) {
+                success = false;
+                logConnectionFailure("AE2 controller channel face attachment",
+                        proxy.innerNode(), endpoint.node, error);
+            }
+        }
+        return success;
+    }
+
     private static IGridConnection createP2PGridConnection(IGridNode first,
                                                             IGridNode second) {
         if (first == null || second == null) {
