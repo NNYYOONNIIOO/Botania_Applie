@@ -976,11 +976,11 @@ if (network == null || network.isEmpty()) {
         try {
             secondProxy = new BridgeProxy(secondEndpoint, second.world,
                     second.getTargetPos(), second);
-            // Each output keeps its regular P2P node in its own attached
-            // network, just like a native ME-P2P output part. Only the outer
-            // nodes form the wireless P2P edge; sharing mainProxy.innerNode()
-            // would turn all output branches into one dense cable path.
-            if (!attachOutputProxy(secondProxy, mainProxy.innerNode())) {
+            // Each output keeps its regular/channel-bearing node in the
+            // network below that spark, just like a native ME-P2P output part.
+            // Only the separate outer nodes form the wireless P2P edge;\n+            // attaching the output inner node to mainProxy would merge all
+            // output branches into the red cable-like path shown in image 1.
+            if (!attachBridgeProxy(secondProxy, secondEndpoint)) {
                 secondProxy.destroy();
                 return build;
             }
@@ -1072,29 +1072,6 @@ if (network == null || network.isEmpty()) {
         } catch (Throwable error) {
             logConnectionFailure("AE2 channel spark endpoint attachment",
                     endpoint.node, proxy.innerNode(), error);
-            return false;
-        }
-    }
-
-    private static boolean attachOutputProxy(BridgeProxy proxy,
-                                              IGridNode backboneNode) {
-        if (proxy == null || backboneNode == null || proxy.innerNode() == null
-                || proxy.node() == null || safeGrid(backboneNode) == null) {
-            return false;
-        }
-        try {
-            // Native P2P outputs use their regular proxy on the tunnel's
-            // local/backbone grid. Their outer proxy is the only node that
-            // reaches the remote network and participates in the P2P edge.
-            IGridConnection connection = GridConnection.create(
-                    backboneNode, proxy.innerNode(), AEPartLocation.INTERNAL);
-            proxy.attachments.add(connection);
-            repathAfterConnection(backboneNode, proxy.innerNode());
-            return safeGrid(proxy.innerNode()) == safeGrid(backboneNode)
-                    && safeGrid(proxy.node()) != null;
-        } catch (Throwable error) {
-            logConnectionFailure("AE2 channel spark output backbone", backboneNode,
-                    proxy.innerNode(), error);
             return false;
         }
     }
