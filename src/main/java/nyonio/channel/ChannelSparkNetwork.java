@@ -171,7 +171,12 @@ public final class ChannelSparkNetwork {
 
         @Override
         public AECableType getCableConnectionType(AEPartLocation direction) {
-            return AECableType.NONE;
+            // PartP2PTunnelME exposes DENSE_SMART for both its regular and
+            // external-facing nodes. Returning NONE makes AE2 treat the
+            // synthetic endpoint like an ordinary device and produces the
+            // dense-cable path shown by the channel spark setup instead of
+            // the P2P-ME path layout.
+            return AECableType.DENSE_SMART;
         }
     }
 
