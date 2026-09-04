@@ -418,20 +418,25 @@ public final class ChannelSparkNetwork {
                 return false;
             }
             try {
-                if (!hasDirectConnection(controller, innerNode())) {
-                    IGridConnection innerConnection = GridConnection.create(
+                IGridConnection innerConnection =
+                        findDirectGridConnection(controller, innerNode());
+                if (innerConnection == null) {
+                    innerConnection = GridConnection.create(
                             controller, innerNode(), AEPartLocation.INTERNAL);
-                    if (innerConnection == null) {
-                        return false;
-                    }
+                }
+                IGridConnection outerConnection =
+                        findDirectGridConnection(controller, outerNode());
+                if (outerConnection == null) {
+                    outerConnection = GridConnection.create(
+                            controller, outerNode(), AEPartLocation.INTERNAL);
+                }
+                if (innerConnection == null || outerConnection == null) {
+                    return false;
+                }
+                if (!attachments.contains(innerConnection)) {
                     attachments.add(innerConnection);
                 }
-                if (!hasDirectConnection(controller, outerNode())) {
-                    IGridConnection outerConnection = GridConnection.create(
-                            controller, outerNode(), AEPartLocation.INTERNAL);
-                    if (outerConnection == null) {
-                        return false;
-                    }
+                if (!attachments.contains(outerConnection)) {
                     attachments.add(outerConnection);
                 }
                 repathAfterConnection(controller, innerNode());
@@ -688,8 +693,7 @@ public final class ChannelSparkNetwork {
         if (main == null || nearby == null) {
             return result;
         }
-        List<EntityChannelSpark> representatives = new ArrayList<>();
-        IGridNode sourceNode = getSparkEndpointNode(main);
+        EntityChannelSpark representative = null;
         for (EntityChannelSpark candidate : nearby) {
             if (candidate == null || candidate == main || candidate.isDead
                     || candidate.world != main.world
@@ -699,34 +703,13 @@ public final class ChannelSparkNetwork {
                     || !hasUsableEndpoint(candidate)) {
                 continue;
             }
-            IGridNode targetNode = getSparkEndpointNode(candidate);
-            if (targetNode == null || sameGrid(sourceNode, targetNode)) {
-                continue;
-            }
-            int existingIndex = -1;
-            for (int index = 0; index < representatives.size(); index++) {
-                if (sameSparkNetwork(candidate, representatives.get(index))) {
-                    existingIndex = index;
-                    break;
-                }
-            }
-            if (existingIndex < 0) {
-                representatives.add(candidate);
-            } else if (isEarlier(candidate, representatives.get(existingIndex))) {
-                representatives.set(existingIndex, candidate);
+            if (representative == null || isEarlier(candidate, representative)) {
+                representative = candidate;
             }
         }
-        Collections.sort(representatives, new Comparator<EntityChannelSpark>() {
-            @Override
-            public int compare(EntityChannelSpark first, EntityChannelSpark second) {
-                if (first.getPlacementOrder() != second.getPlacementOrder()) {
-                    return first.getPlacementOrder() < second.getPlacementOrder()
-                            ? -1 : 1;
-                }
-                return Integer.compare(first.getEntityId(), second.getEntityId());
-            }
-        });
-        result.addAll(representatives);
+        if (representative != null) {
+            result.add(representative);
+        }
         return result;
     }
 
@@ -743,6 +726,9 @@ public final class ChannelSparkNetwork {
                 }
             }
         }
+
+        // Remove every stale edge from the main map. unlink() also removes
+        // the reverse edge and destroys any old AE2 bridge attached to it.
         for (Link link : new ArrayList<>(main.getLinks().values())) {
             EntityChannelSpark other = link.other;
             if (other == null || !desiredIds.contains(other.getUniqueID())
@@ -750,8 +736,16 @@ public final class ChannelSparkNetwork {
                 unlink(main, other, link.connection);
             }
         }
+
         if (desired != null) {
             for (EntityChannelSpark candidate : desired) {
+                // A channel spark belongs to this one main spark only; remove
+                // any stale links left by an earlier fan topology.
+                for (Link link : new ArrayList<>(candidate.getLinks().values())) {
+                    if (link.other != main) {
+                        unlink(candidate, link.other, link.connection);
+                    }
+                }
                 connect(main, candidate);
             }
         }
@@ -820,40 +814,19 @@ public final class ChannelSparkNetwork {
         if (main == null || network == null || mainProxy == null) {
             return result;
         }
-        List<EntityChannelSpark> representatives = new ArrayList<>();
+        EntityChannelSpark representative = null;
         for (EntityChannelSpark spark : network) {
             if (spark == null || spark == main || spark.isMainChannelSpark()
                     || !hasUsableEndpoint(spark)) {
                 continue;
             }
-            IGridNode targetNode = getSparkEndpointNode(spark);
-            if (targetNode == null || sameGrid(targetNode, mainProxy.outerNode())) {
-                continue;
-            }
-            int existingIndex = -1;
-            for (int index = 0; index < representatives.size(); index++) {
-                if (sameSparkNetwork(spark, representatives.get(index))) {
-                    existingIndex = index;
-                    break;
-                }
-            }
-            if (existingIndex < 0) {
-                representatives.add(spark);
-            } else if (isEarlier(spark, representatives.get(existingIndex))) {
-                representatives.set(existingIndex, spark);
+            if (representative == null || isEarlier(spark, representative)) {
+                representative = spark;
             }
         }
-        Collections.sort(representatives, new Comparator<EntityChannelSpark>() {
-            @Override
-            public int compare(EntityChannelSpark first, EntityChannelSpark second) {
-                if (first.getPlacementOrder() != second.getPlacementOrder()) {
-                    return first.getPlacementOrder() < second.getPlacementOrder()
-                            ? -1 : 1;
-                }
-                return Integer.compare(first.getEntityId(), second.getEntityId());
-            }
-        });
-        result.addAll(representatives);
+        if (representative != null) {
+            result.add(representative);
+        }
         return result;
     }
 
@@ -947,6 +920,12 @@ public final class ChannelSparkNetwork {
         if (firstLink != null && secondLink != null) {
             return;
         }
+        if (firstLink != null) {
+            destroyConnection(firstLink.connection);
+        }
+        if (secondLink != null) {
+            destroyConnection(secondLink.connection);
+        }
         first.getLinks().remove(secondId);
         second.getLinks().remove(firstId);
         first.getLinks().put(secondId, new Link(second, null));
@@ -977,8 +956,6 @@ public final class ChannelSparkNetwork {
             return;
         }
 
-        // One shared main outer proxy is the P2P hub. Each ordinary spark
-        // gets one independent remote outer proxy and one bridge record.
         BridgeProxy mainProxy = getOrCreateMainProxy(main);
         if (mainProxy == null) {
             removeStaleNonSourceBridges(network, null);
@@ -988,17 +965,14 @@ public final class ChannelSparkNetwork {
 
         List<EntityChannelSpark> endpointSparks =
                 collectUniqueEndpointSparks(main, network, mainProxy);
-
         removeStaleNonSourceBridges(network, main);
         removeUndesiredBridges(main, endpointSparks);
+
         for (EntityChannelSpark other : endpointSparks) {
             BridgeKey key = new BridgeKey(main.getUniqueID(), other.getUniqueID());
-        // Each main/output spark pair owns exactly one P2P connection.
-        int expectedConnections = 1;
             BridgeRecord existing = AE_BRIDGES.get(key);
             if (existing != null) {
-                if (existing.expectedConnections == expectedConnections
-                        && existing.connections.size() == expectedConnections
+                if (existing.connections.size() == 1
                         && areConnectionsAlive(existing.connections)) {
                     continue;
                 }
@@ -1007,8 +981,7 @@ public final class ChannelSparkNetwork {
             }
             BridgeBuild build = createGridConnectionsIfPossible(main, other, mainProxy);
             if (!build.isEmpty()) {
-                AE_BRIDGES.put(key, new BridgeRecord(main, other, build,
-                        expectedConnections));
+                AE_BRIDGES.put(key, new BridgeRecord(main, other, build, 1));
             }
         }
     }
@@ -1368,15 +1341,27 @@ if (network == null || network.isEmpty()) {
             return false;
         }
         try {
-            IGridConnection localAttachment = GridConnection.create(
-                    endpoint.node, proxy.innerNode(), AEPartLocation.INTERNAL);
-            IGridConnection outerAttachment = GridConnection.create(
-                    endpoint.node, proxy.outerNode(), AEPartLocation.INTERNAL);
-            if (localAttachment == null || outerAttachment == null) {
+            IGridConnection innerConnection =
+                    findDirectGridConnection(endpoint.node, proxy.innerNode());
+            if (innerConnection == null) {
+                innerConnection = GridConnection.create(
+                        endpoint.node, proxy.innerNode(), AEPartLocation.INTERNAL);
+            }
+            IGridConnection outerConnection =
+                    findDirectGridConnection(endpoint.node, proxy.outerNode());
+            if (outerConnection == null) {
+                outerConnection = GridConnection.create(
+                        endpoint.node, proxy.outerNode(), AEPartLocation.INTERNAL);
+            }
+            if (innerConnection == null || outerConnection == null) {
                 return false;
             }
-            proxy.attachments.add(localAttachment);
-            proxy.attachments.add(outerAttachment);
+            if (!proxy.attachments.contains(innerConnection)) {
+                proxy.attachments.add(innerConnection);
+            }
+            if (!proxy.attachments.contains(outerConnection)) {
+                proxy.attachments.add(outerConnection);
+            }
             repathAfterConnection(endpoint.node, proxy.innerNode());
             repathAfterConnection(endpoint.node, proxy.outerNode());
             return safeGrid(proxy.innerNode()) == safeGrid(endpoint.node)
