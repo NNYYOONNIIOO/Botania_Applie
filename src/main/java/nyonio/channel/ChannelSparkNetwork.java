@@ -254,23 +254,23 @@ public final class ChannelSparkNetwork {
             this.innerProxy.setFlags(GridFlags.REQUIRE_CHANNEL,
                     GridFlags.COMPRESSED_CHANNEL);
 
-            // The outer node is the wireless/P2P side. It must not discover
-            // the same target block as the local inner node: doing so joins
-            // every target network into the cable-like topology visible in
-            // the current screenshot. Its only grid edge is the explicit
-            // outer-to-outer P2P connection below.
+            // This is the world-facing side of the P2P tunnel. It discovers
+            // exactly the target block below the spark, like AE2's native
+            // PartP2PTunnelME outerProxy. The inner node remains the local
+            // channel consumer; the outer node is the dense P2P endpoint.
             ProxyHost outerHost = new ProxyHost(this.anchor, outerLocation,
-                    EnumSet.noneOf(EnumFacing.class));
+                    EnumSet.of(EnumFacing.DOWN));
             this.outerProxy = new AENetworkProxy(
-                    outerHost, "botania_applie_channel_spark_outer", ItemStack.EMPTY, false);
+                    outerHost, "botania_applie_channel_spark_outer", ItemStack.EMPTY, true);
             outerHost.setProxy(this.outerProxy);
             this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY,
                     GridFlags.CANNOT_CARRY_COMPRESSED);
 
             this.innerProxy.setValidSides(EnumSet.noneOf(EnumFacing.class));
-            // Do not world-discover the target here. The target network is
-            // represented by innerProxy; outerProxy is only the P2P bridge.
-            this.outerProxy.setValidSides(EnumSet.noneOf(EnumFacing.class));
+            // GridNode.findConnections() now looks one block DOWN and asks
+            // that host for its UP-side node. Do not add a second manual
+            // outer connection: this preserves the native P2P boundary.
+            this.outerProxy.setValidSides(EnumSet.of(EnumFacing.DOWN));
             this.innerProxy.onReady();
             this.outerProxy.onReady();
         }
