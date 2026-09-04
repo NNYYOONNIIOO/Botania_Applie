@@ -754,24 +754,41 @@ public final class ChannelSparkNetwork {
     private static List<EntityChannelSpark> collectUniqueLogicalEndpoints(
             EntityChannelSpark main, List<EntityChannelSpark> nearby,
             double maxDistance) {
-        List<EntityChannelSpark> result = new ArrayList<>();
+        List<EntityChannelSpark> representatives = new ArrayList<>();
+        List<IGridNode> representativeNodes = new ArrayList<>();
         if (main == null || nearby == null) {
-            return result;
+            return representatives;
         }
-        Set<UUID> seen = new HashSet<>();
+        IGridNode sourceNode = getSparkEndpointNode(main);
         for (EntityChannelSpark candidate : nearby) {
             if (candidate == null || candidate == main || candidate.isDead
                     || candidate.world != main.world
                     || candidate.isMainChannelSpark()
                     || !isPrimaryInBlock(candidate)
                     || main.getDistanceSq(candidate) > maxDistance
-                    || !hasUsableEndpoint(candidate)
-                    || !seen.add(candidate.getUniqueID())) {
+                    || !hasUsableEndpoint(candidate)) {
                 continue;
             }
-            result.add(candidate);
+            IGridNode candidateNode = getSparkEndpointNode(candidate);
+            if (candidateNode == null
+                    || (sourceNode != null && sameGrid(sourceNode, candidateNode))) {
+                continue;
+            }
+            int existingIndex = -1;
+            for (int index = 0; index < representativeNodes.size(); index++) {
+                if (sameGrid(representativeNodes.get(index), candidateNode)) {
+                    existingIndex = index;
+                    break;
+                }
+            }
+            if (existingIndex < 0) {
+                representativeNodes.add(candidateNode);
+                representatives.add(candidate);
+            } else if (isEarlier(candidate, representatives.get(existingIndex))) {
+                representatives.set(existingIndex, candidate);
+            }
         }
-        Collections.sort(result, new Comparator<EntityChannelSpark>() {
+        Collections.sort(representatives, new Comparator<EntityChannelSpark>() {
             @Override
             public int compare(EntityChannelSpark first, EntityChannelSpark second) {
                 if (first.getPlacementOrder() != second.getPlacementOrder()) {
@@ -781,7 +798,7 @@ public final class ChannelSparkNetwork {
                 return Integer.compare(first.getEntityId(), second.getEntityId());
             }
         });
-        return result;
+        return representatives;
     }
 
     private static void reconcileLogicalLinks(EntityChannelSpark main,
@@ -881,20 +898,40 @@ public final class ChannelSparkNetwork {
     private static List<EntityChannelSpark> collectUniqueEndpointSparks(
             EntityChannelSpark main, List<EntityChannelSpark> network,
             BridgeProxy mainProxy) {
-        List<EntityChannelSpark> result = new ArrayList<>();
+        List<EntityChannelSpark> representatives = new ArrayList<>();
+        List<IGridNode> representativeNodes = new ArrayList<>();
         if (main == null || network == null || mainProxy == null) {
-            return result;
+            return representatives;
         }
-        Set<UUID> seen = new HashSet<>();
+        IGridNode sourceNode = mainProxy.outerNode();
+        if (sourceNode == null && !mainProxy.getControllerOuterProxies().isEmpty()) {
+            sourceNode = mainProxy.getControllerOuterProxies().get(0).getNode();
+        }
         for (EntityChannelSpark spark : network) {
             if (spark == null || spark == main || spark.isMainChannelSpark()
-                    || !hasUsableEndpoint(spark)
-                    || !seen.add(spark.getUniqueID())) {
+                    || !hasUsableEndpoint(spark)) {
                 continue;
             }
-            result.add(spark);
+            IGridNode targetNode = getSparkEndpointNode(spark);
+            if (targetNode == null
+                    || (sourceNode != null && sameGrid(sourceNode, targetNode))) {
+                continue;
+            }
+            int existingIndex = -1;
+            for (int index = 0; index < representativeNodes.size(); index++) {
+                if (sameGrid(representativeNodes.get(index), targetNode)) {
+                    existingIndex = index;
+                    break;
+                }
+            }
+            if (existingIndex < 0) {
+                representativeNodes.add(targetNode);
+                representatives.add(spark);
+            } else if (isEarlier(spark, representatives.get(existingIndex))) {
+                representatives.set(existingIndex, spark);
+            }
         }
-        Collections.sort(result, new Comparator<EntityChannelSpark>() {
+        Collections.sort(representatives, new Comparator<EntityChannelSpark>() {
             @Override
             public int compare(EntityChannelSpark first, EntityChannelSpark second) {
                 if (first.getPlacementOrder() != second.getPlacementOrder()) {
@@ -904,7 +941,7 @@ public final class ChannelSparkNetwork {
                 return Integer.compare(first.getEntityId(), second.getEntityId());
             }
         });
-        return result;
+        return representatives;
     }
 
     public static void showNetwork(EntityPlayer player, EntityChannelSpark source) {
@@ -1049,7 +1086,8 @@ public final class ChannelSparkNetwork {
             BridgeKey key = new BridgeKey(main.getUniqueID(), other.getUniqueID());
             BridgeRecord existing = AE_BRIDGES.get(key);
             if (existing != null) {
-                if (existing.connections.size() == 1
+                if (existing.expectedConnections == 1
+                        && existing.connections.size() == 1
                         && areConnectionsAlive(existing.connections)) {
                     continue;
                 }
