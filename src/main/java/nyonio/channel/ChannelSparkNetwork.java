@@ -247,13 +247,17 @@ public final class ChannelSparkNetwork {
             this.innerProxy.setValidSides(EnumSet.noneOf(EnumFacing.class));
 
             ProxyHost outerHost = new ProxyHost(this.anchor, location,
-                    EnumSet.noneOf(EnumFacing.class));
+                    endpoint != null && endpoint.controllerFace
+                            ? EnumSet.noneOf(EnumFacing.class)
+                            : EnumSet.of(EnumFacing.DOWN));
             this.outerProxy = new AENetworkProxy(outerHost,
                     "botania_applie_channel_spark_outer", ItemStack.EMPTY, true);
             outerHost.setProxy(this.outerProxy);
             this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY,
                     GridFlags.CANNOT_CARRY_COMPRESSED);
-            this.outerProxy.setValidSides(EnumSet.noneOf(EnumFacing.class));
+            this.outerProxy.setValidSides(endpoint != null && endpoint.controllerFace
+                    ? EnumSet.noneOf(EnumFacing.class)
+                    : EnumSet.of(EnumFacing.DOWN));
 
             this.innerProxy.onReady();
             this.outerProxy.onReady();
@@ -271,32 +275,56 @@ public final class ChannelSparkNetwork {
             return outerProxy.getNode();
         }
 
-        private AENetworkProxy createControllerChannelProxy(String suffix,
-                                                             DimensionalCoord location) {
-            ProxyHost host = new ProxyHost(this.anchor, location,
-                    EnumSet.noneOf(EnumFacing.class));
+        private AENetworkProxy createControllerChannelProxy(
+                String suffix, AEPartLocation face,
+                DimensionalCoord controllerLocation) {
+            if (face == null || face.getFacing() == null
+                    || controllerLocation == null) {
+                return null;
+            }
+            EnumFacing outward = face.getFacing();
+            BlockPos position = new BlockPos(
+                    controllerLocation.x + outward.getFrontOffsetX(),
+                    controllerLocation.y + outward.getFrontOffsetY(),
+                    controllerLocation.z + outward.getFrontOffsetZ());
+            DimensionalCoord location = new DimensionalCoord(
+                    controllerLocation.getWorld(), position);
+            EnumSet<EnumFacing> sides = EnumSet.of(outward.getOpposite());
+            ProxyHost host = new ProxyHost(this.anchor, location, sides);
             AENetworkProxy proxy = new AENetworkProxy(host,
                     "botania_applie_channel_spark_channel_" + suffix,
-                    ItemStack.EMPTY, false);
+                    ItemStack.EMPTY, true);
             host.setProxy(proxy);
             proxy.setFlags(GridFlags.REQUIRE_CHANNEL,
                     GridFlags.COMPRESSED_CHANNEL);
-            proxy.setValidSides(EnumSet.noneOf(EnumFacing.class));
+            proxy.setValidSides(sides);
             proxy.onReady();
             return proxy;
         }
 
-        private AENetworkProxy createControllerOuterProxy(String suffix,
-                                                            DimensionalCoord location) {
-            ProxyHost host = new ProxyHost(this.anchor, location,
-                    EnumSet.noneOf(EnumFacing.class));
+        private AENetworkProxy createControllerOuterProxy(
+                String suffix, AEPartLocation face,
+                DimensionalCoord controllerLocation) {
+            if (face == null || face.getFacing() == null
+                    || controllerLocation == null) {
+                return null;
+            }
+            EnumFacing outward = face.getFacing();
+            BlockPos position = new BlockPos(
+                    controllerLocation.x + outward.getFrontOffsetX(),
+                    controllerLocation.y + outward.getFrontOffsetY(),
+                    controllerLocation.z + outward.getFrontOffsetZ());
+            DimensionalCoord location = new DimensionalCoord(
+                    controllerLocation.getWorld(), position);
+            EnumSet<EnumFacing> sides = EnumSet.of(outward.getOpposite());
+            ProxyHost host = new ProxyHost(this.anchor, location, sides);
             AENetworkProxy proxy = new AENetworkProxy(host,
                     "botania_applie_channel_spark_outer_" + suffix,
                     ItemStack.EMPTY, true);
             host.setProxy(proxy);
             proxy.setFlags(GridFlags.DENSE_CAPACITY,
                     GridFlags.CANNOT_CARRY_COMPRESSED);
-            proxy.setValidSides(EnumSet.noneOf(EnumFacing.class));
+            proxy.setValidSides(sides);
             proxy.onReady();
             return proxy;
         }
@@ -328,59 +356,37 @@ public final class ChannelSparkNetwork {
                 return false;
             }
 
-            DimensionalCoord location = null;
+            DimensionalCoord controllerLocation = null;
             try {
                 if (controller.getGridBlock() != null) {
-                    location = controller.getGridBlock().getLocation();
+                    controllerLocation = controller.getGridBlock().getLocation();
                 }
             } catch (Throwable ignored) {
             }
-            if (location == null) {
+            if (controllerLocation == null) {
                 return false;
             }
 
             for (AEPartLocation face : unusedFaces) {
                 AENetworkProxy channelProxy = createControllerChannelProxy(
-                        face.toString(), location);
+                        face.toString(), face, controllerLocation);
                 AENetworkProxy outerProxy = createControllerOuterProxy(
-                        face.toString(), location);
+                        face.toString(), face, controllerLocation);
                 if (channelProxy == null || outerProxy == null
                         || channelProxy.getNode() == null
                         || outerProxy.getNode() == null) {
                     destroyControllerInputs();
                     return false;
                 }
-                IGridConnection channelConnection = null;
-                IGridConnection outerConnection = null;
-                try {
-                    channelConnection = GridConnection.create(
-                            controller, channelProxy.getNode(), face);
-                    outerConnection = GridConnection.create(
-                            controller, outerProxy.getNode(), face);
-                } catch (Throwable error) {
-                    if (channelConnection != null) {
-                        destroyConnection(channelConnection);
-                    }
-                    destroyControllerInputs();
-                    logConnectionFailure("AE2 controller P2P face input", controller,
-                            channelProxy.getNode(), error);
-                    return false;
-                }
-                if (channelConnection == null || outerConnection == null) {
-                    if (channelConnection != null) {
-                        destroyConnection(channelConnection);
-                    }
-                    if (outerConnection != null) {
-                        destroyConnection(outerConnection);
-                    }
-                    destroyControllerInputs();
-                    return false;
-                }
-                attachments.add(channelConnection);
-                attachments.add(outerConnection);
+
                 controllerChannelProxies.add(channelProxy);
                 controllerOuterProxies.add(outerProxy);
                 controllerFaces.add(face);
+                if (!hasDirectConnection(controller, channelProxy.getNode())
+                        || !hasDirectConnection(controller, outerProxy.getNode())) {
+                    destroyControllerInputs();
+                    return false;
+                }
                 repathAfterConnection(controller, channelProxy.getNode());
                 repathAfterConnection(controller, outerProxy.getNode());
             }
@@ -1197,22 +1203,22 @@ if (network == null || network.isEmpty()) {
             return false;
         }
         try {
-            // An output is bound only to the block directly below its spark.
-            // Its regular node stays on that local AE network and is never
-            // connected to the main spark's node/backbone.
+            // The local node consumes the channel on the attached AE network.
             IGridConnection localConnection = GridConnection.create(
                     endpoint.node, proxy.innerNode(), AEPartLocation.INTERNAL);
+            if (localConnection == null) {
+                return false;
+            }
             proxy.attachments.add(localConnection);
-
-            // Its independent dense node is the P2P output endpoint.
-            IGridConnection outerConnection = GridConnection.create(
-                    endpoint.node, proxy.outerNode(), AEPartLocation.INTERNAL);
-            proxy.attachments.add(outerConnection);
             repathAfterConnection(endpoint.node, proxy.innerNode());
-            repathAfterConnection(endpoint.node, proxy.outerNode());
 
-            return safeGrid(proxy.innerNode()) == safeGrid(endpoint.node)
-                    && safeGrid(proxy.outerNode()) == safeGrid(endpoint.node);
+            // outerProxy is a world node at targetPos.up() with DOWN as its
+            // only valid side, matching PartP2PTunnelME.outerProxy. It should
+            // already have discovered the block directly below the spark.
+            if (safeGrid(proxy.outerNode()) != safeGrid(endpoint.node)) {
+                return false;
+            }
+            return true;
         } catch (Throwable error) {
             logConnectionFailure("AE2 channel spark output endpoint attachment",
                     endpoint.node, proxy.innerNode(), error);
