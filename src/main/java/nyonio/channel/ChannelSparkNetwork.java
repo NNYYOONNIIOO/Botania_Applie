@@ -981,8 +981,7 @@ if (network == null || network.isEmpty()) {
             // Each output keeps its regular/channel-bearing node in the
             // network below that spark, just like a native ME-P2P output part.
             // Only the output outer node participates in the wireless edge.
-            if (!attachOutputProxy(secondProxy, mainProxy.outerNode(),
-                    secondEndpoint.node)) {
+            if (!attachOutputProxy(secondProxy, secondEndpoint)) {
                 secondProxy.destroy();
                 return build;
             }
@@ -990,7 +989,7 @@ if (network == null || network.isEmpty()) {
             // One shared main outer node connects to one independent remote
             // outer node, exactly as an ME P2P input/output pair.
             IGridConnection connection = createP2PGridConnection(
-                    mainProxy.node(), secondProxy.node());
+                    mainProxy.outerNode(), secondProxy.outerNode());
             if (connection == null) {
                 secondProxy.destroy();
                 return build;
@@ -1051,28 +1050,26 @@ if (network == null || network.isEmpty()) {
     }
 
     private static boolean attachOutputProxy(BridgeProxy proxy,
-                                              IGridNode backboneNode,
-                                              IGridNode targetNode) {
-        if (proxy == null || backboneNode == null || targetNode == null
+                                              BridgeEndpoint endpoint) {
+        if (proxy == null || endpoint == null || endpoint.node == null
                 || proxy.innerNode() == null || proxy.node() == null
-                || safeGrid(backboneNode) == null
-                || safeGrid(targetNode) == null) {
+                || safeGrid(endpoint.node) == null) {
             return false;
         }
         try {
-            // The regular side of an output belongs to the source-network
-            // backbone and consumes its channel there. The world-facing
-            // outer side remains independent and is discovered against the
-            // output spark's block directly below.
-            IGridConnection backboneConnection = GridConnection.create(
-                    backboneNode, proxy.innerNode(), AEPartLocation.INTERNAL);
-            proxy.attachments.add(backboneConnection);
-            repathAfterConnection(backboneNode, proxy.innerNode());
-            return safeGrid(proxy.innerNode()) == safeGrid(backboneNode)
-                    && safeGrid(proxy.node()) == safeGrid(targetNode);
+            // The regular node of an output belongs only to the AE network
+            // below that spark. It must not be joined to the hub's regular
+            // node: that would merge every output into a cable-like backbone.
+            IGridConnection localConnection = GridConnection.create(
+                    endpoint.node, proxy.innerNode(),
+                    getInnerConnectionDirection(endpoint, proxy));
+            proxy.attachments.add(localConnection);
+            repathAfterConnection(endpoint.node, proxy.innerNode());
+            return safeGrid(proxy.innerNode()) == safeGrid(endpoint.node)
+                    && safeGrid(proxy.node()) == safeGrid(endpoint.node);
         } catch (Throwable error) {
-            logConnectionFailure("AE2 channel spark output P2P attachment",
-                    backboneNode, proxy.innerNode(), error);
+            logConnectionFailure("AE2 channel spark output endpoint attachment",
+                    endpoint.node, proxy.innerNode(), error);
             return false;
         }
     }
