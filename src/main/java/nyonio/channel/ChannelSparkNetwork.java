@@ -266,7 +266,7 @@ public final class ChannelSparkNetwork {
                     EnumSet.of(EnumFacing.DOWN));
             this.outerProxy = new AENetworkProxy(
                     outerHost, "botania_applie_channel_spark_outer", ItemStack.EMPTY,
-                    false);
+                    true);
             outerHost.setProxy(this.outerProxy);
             this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY,
                     GridFlags.CANNOT_CARRY_COMPRESSED);
