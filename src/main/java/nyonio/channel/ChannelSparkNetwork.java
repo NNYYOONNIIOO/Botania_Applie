@@ -262,15 +262,11 @@ public final class ChannelSparkNetwork {
             // main controller endpoint is attached explicitly to the
             // controller grid so no controller face becomes a visible EAST
             // cable edge.
-            boolean controllerEndpoint = endpoint != null
-                    && endpoint.controllerFace;
             ProxyHost outerHost = new ProxyHost(this.anchor, outerLocation,
-                    controllerEndpoint
-                            ? EnumSet.noneOf(EnumFacing.class)
-                            : EnumSet.of(EnumFacing.DOWN));
+                    EnumSet.of(EnumFacing.DOWN));
             this.outerProxy = new AENetworkProxy(
                     outerHost, "botania_applie_channel_spark_outer", ItemStack.EMPTY,
-                    !controllerEndpoint);
+                    true);
             outerHost.setProxy(this.outerProxy);
             this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY,
                     GridFlags.CANNOT_CARRY_COMPRESSED);
@@ -279,9 +275,7 @@ public final class ChannelSparkNetwork {
             // synthetic physical cable sides. The outer node alone performs
             // world discovery through the block directly below the spark.
             this.innerProxy.setValidSides(EnumSet.allOf(EnumFacing.class));
-            this.outerProxy.setValidSides(controllerEndpoint
-                    ? EnumSet.noneOf(EnumFacing.class)
-                    : EnumSet.of(EnumFacing.DOWN));
+            this.outerProxy.setValidSides(EnumSet.of(EnumFacing.DOWN));
             this.innerProxy.onReady();
             this.outerProxy.onReady();
         }
