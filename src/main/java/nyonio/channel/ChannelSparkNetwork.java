@@ -246,22 +246,31 @@ public final class ChannelSparkNetwork {
             // node on DOWN. Keep the inner proxy on that opposite physical
             // face so it can consume one local channel without becoming a
             // second world-facing endpoint.
+            // The regular P2P side behaves like PartP2PTunnelME.getProxy():
+            // it is a dense smart channel endpoint. It is joined explicitly
+            // below and is not a world node, so these sides do not discover
+            // neighbouring blocks by themselves.
             ProxyHost innerHost = new ProxyHost(this.anchor, innerLocation,
-                    EnumSet.noneOf(EnumFacing.class));
+                    EnumSet.allOf(EnumFacing.class));
             this.innerProxy = new AENetworkProxy(
                     innerHost, "botania_applie_channel_spark_inner", ItemStack.EMPTY, false);
             innerHost.setProxy(this.innerProxy);
             this.innerProxy.setFlags(GridFlags.REQUIRE_CHANNEL,
                     GridFlags.COMPRESSED_CHANNEL);
 
-            // Both input and output sparks use the native world-facing P2P
-            // side. It discovers exactly the block directly below the spark;
-            // the regular inner node is the only local channel attachment.
+            // The outer side is world-facing only for ordinary outputs. The
+            // main controller endpoint is attached explicitly to the
+            // controller grid so no controller face becomes a visible EAST
+            // cable edge.
+            boolean controllerEndpoint = endpoint != null
+                    && endpoint.controllerFace;
             ProxyHost outerHost = new ProxyHost(this.anchor, outerLocation,
-                    EnumSet.of(EnumFacing.DOWN));
+                    controllerEndpoint
+                            ? EnumSet.noneOf(EnumFacing.class)
+                            : EnumSet.of(EnumFacing.DOWN));
             this.outerProxy = new AENetworkProxy(
                     outerHost, "botania_applie_channel_spark_outer", ItemStack.EMPTY,
-                    true);
+                    !controllerEndpoint);
             outerHost.setProxy(this.outerProxy);
             this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY,
                     GridFlags.CANNOT_CARRY_COMPRESSED);
@@ -269,8 +278,10 @@ public final class ChannelSparkNetwork {
             // The inner node is joined explicitly and must not expose six
             // synthetic physical cable sides. The outer node alone performs
             // world discovery through the block directly below the spark.
-            this.innerProxy.setValidSides(EnumSet.noneOf(EnumFacing.class));
-            this.outerProxy.setValidSides(EnumSet.of(EnumFacing.DOWN));
+            this.innerProxy.setValidSides(EnumSet.allOf(EnumFacing.class));
+            this.outerProxy.setValidSides(controllerEndpoint
+                    ? EnumSet.noneOf(EnumFacing.class)
+                    : EnumSet.of(EnumFacing.DOWN));
             this.innerProxy.onReady();
             this.outerProxy.onReady();
         }
@@ -288,7 +299,8 @@ public final class ChannelSparkNetwork {
                     && direction == endpoint.direction
                     && innerNode() != null && node() != null
                     && safeGrid(innerNode()) != null
-                    && safeGrid(innerNode()) == safeGrid(endpoint.node);
+                    && safeGrid(innerNode()) == safeGrid(endpoint.node)
+                    && safeGrid(node()) == safeGrid(endpoint.node);
         }
 
         private void destroy() {
@@ -685,7 +697,12 @@ public final class ChannelSparkNetwork {
 
         BridgeProxy created = new BridgeProxy(endpoint, main.world,
                 main.getTargetPos(), main);
-        if (!attachBridgeProxy(created, endpoint)) {
+        if (!attachMainProxy(created, endpoint)) {
+            created.destroy();
+            return null;
+        }
+        if (endpoint.controllerFace
+                && !attachAdditionalControllerChannels(created, endpoints)) {
             created.destroy();
             return null;
         }
@@ -966,9 +983,9 @@ if (network == null || network.isEmpty()) {
                     second.getTargetPos(), second);
             // Each output keeps its regular/channel-bearing node in the
             // network below that spark, just like a native ME-P2P output part.
-            // Only the separate outer nodes form the wireless P2P edge;\n+            // attaching the output inner node to mainProxy would merge all
-            // output branches into the red cable-like path shown in image 1.
-            if (!attachBridgeProxy(secondProxy, secondEndpoint)) {
+            // Only the output outer node participates in the wireless edge.
+            if (!attachOutputProxy(secondProxy, mainProxy.innerNode(),
+                    secondEndpoint.node)) {
                 secondProxy.destroy();
                 return build;
             }
@@ -994,7 +1011,7 @@ if (network == null || network.isEmpty()) {
         }
     }
 
-    private static boolean attachBridgeProxy(BridgeProxy proxy,
+    private static boolean attachMainProxy(BridgeProxy proxy,
                                                BridgeEndpoint endpoint) {
         if (proxy == null || endpoint == null || endpoint.node == null
                 || proxy.innerNode() == null || proxy.node() == null) {
@@ -1032,6 +1049,33 @@ if (network == null || network.isEmpty()) {
         } catch (Throwable error) {
             logConnectionFailure("AE2 channel spark endpoint attachment",
                     endpoint.node, proxy.innerNode(), error);
+            return false;
+        }
+    }
+
+    private static boolean attachOutputProxy(BridgeProxy proxy,
+                                              IGridNode backboneNode,
+                                              IGridNode targetNode) {
+        if (proxy == null || backboneNode == null || targetNode == null
+                || proxy.innerNode() == null || proxy.node() == null
+                || safeGrid(backboneNode) == null
+                || safeGrid(targetNode) == null) {
+            return false;
+        }
+        try {
+            // The regular side of an output belongs to the source-network
+            // backbone and consumes its channel there. The world-facing
+            // outer side remains independent and is discovered against the
+            // output spark's block directly below.
+            IGridConnection backboneConnection = GridConnection.create(
+                    backboneNode, proxy.innerNode(), AEPartLocation.INTERNAL);
+            proxy.attachments.add(backboneConnection);
+            repathAfterConnection(backboneNode, proxy.innerNode());
+            return safeGrid(proxy.innerNode()) == safeGrid(backboneNode)
+                    && safeGrid(proxy.node()) == safeGrid(targetNode);
+        } catch (Throwable error) {
+            logConnectionFailure("AE2 channel spark output P2P attachment",
+                    backboneNode, proxy.innerNode(), error);
             return false;
         }
     }
