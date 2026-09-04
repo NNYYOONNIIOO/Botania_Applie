@@ -133,11 +133,16 @@ public final class ChannelSparkNetwork {
     private static final class ProxyHost implements IGridProxyable {
         private final IGridNode anchor;
         private final DimensionalCoord location;
+        private final EnumSet<EnumFacing> connectableSides;
         private AENetworkProxy proxy;
 
-        private ProxyHost(IGridNode anchor, DimensionalCoord location) {
+        private ProxyHost(IGridNode anchor, DimensionalCoord location,
+                          EnumSet<EnumFacing> connectableSides) {
             this.anchor = anchor;
             this.location = location;
+            this.connectableSides = connectableSides == null
+                    ? EnumSet.noneOf(EnumFacing.class)
+                    : EnumSet.copyOf(connectableSides);
         }
 
         private void setProxy(AENetworkProxy proxy) {
@@ -171,11 +176,16 @@ public final class ChannelSparkNetwork {
 
         @Override
         public AECableType getCableConnectionType(AEPartLocation direction) {
-            // PartP2PTunnelME exposes DENSE_SMART for both its regular and
-            // external-facing nodes. Returning NONE makes AE2 treat the
-            // synthetic endpoint like an ordinary device and produces the
-            // dense-cable path shown by the channel spark setup instead of
-            // the P2P-ME path layout.
+            // GridNode.findConnections() uses this method when it searches
+            // every side of a world-accessible proxy. Reporting a connection
+            // on every side makes the spark bind to an arbitrary neighbour
+            // (most visibly the EAST/+X block). The external P2P node must
+            // expose only its configured side, normally DOWN.
+            if (direction == null || direction == AEPartLocation.INTERNAL
+                    || direction.getFacing() == null
+                    || !connectableSides.contains(direction.getFacing())) {
+                return AECableType.NONE;
+            }
             return AECableType.DENSE_SMART;
         }
     }
@@ -210,36 +220,42 @@ public final class ChannelSparkNetwork {
             this.anchor = endpoint == null ? null : endpoint.node;
             this.direction = endpoint == null ? null : endpoint.direction;
             EnumFacing face = getProxyAttachmentFace(endpoint, spark);
-            // The world-facing node represents the spark itself. The AE host
-            // is the block below it; deriving this position from a controller
-            // face shifts the rendered P2P endpoint sideways (toward +X).
-            BlockPos proxyPos = targetPos == null
-                    ? getEndpointBlockPos(endpoint, targetPos) : targetPos.up();
-            DimensionalCoord location = new DimensionalCoord(world, proxyPos);
+            // The inner node belongs to the attached block itself. The outer
+            // node belongs to the spark one block above it and discovers only
+            // the block below through DOWN. Sharing one location makes the
+            // controller-side connection appear shifted toward +X/EAST.
+            BlockPos attachedPos = targetPos == null
+                    ? getEndpointBlockPos(endpoint, targetPos) : targetPos;
+            if (attachedPos == null) {
+                attachedPos = new BlockPos(0, 0, 0);
+            }
+            BlockPos sparkPos = attachedPos.up();
+            DimensionalCoord innerLocation = new DimensionalCoord(world, attachedPos);
+            DimensionalCoord outerLocation = new DimensionalCoord(world, sparkPos);
 
-            ProxyHost innerHost = new ProxyHost(this.anchor, location);
+            ProxyHost innerHost = new ProxyHost(this.anchor, innerLocation,
+                    EnumSet.noneOf(EnumFacing.class));
             this.innerProxy = new AENetworkProxy(
                     innerHost, "botania_applie_channel_spark_inner", ItemStack.EMPTY, false);
             innerHost.setProxy(this.innerProxy);
             this.innerProxy.setFlags(GridFlags.REQUIRE_CHANNEL,
                     GridFlags.COMPRESSED_CHANNEL);
 
-            ProxyHost outerHost = new ProxyHost(this.anchor, location);
+            ProxyHost outerHost = new ProxyHost(this.anchor, outerLocation,
+                    EnumSet.of(EnumFacing.DOWN));
             this.outerProxy = new AENetworkProxy(
                     outerHost, "botania_applie_channel_spark_outer", ItemStack.EMPTY, true);
             outerHost.setProxy(this.outerProxy);
             this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY,
                     GridFlags.CANNOT_CARRY_COMPRESSED);
 
-            if (face != null) {
-                EnumSet<EnumFacing> validSides = EnumSet.of(face.getOpposite());
-                this.innerProxy.setValidSides(validSides);
-                // Let the world-facing outer node discover the adjacent AE
-                // host through its synthetic location, as native ME P2P does.
-                // Find the attached AE host directly below the spark, just as
-                // the external side of a native ME P2P part does.
-                this.outerProxy.setValidSides(EnumSet.of(EnumFacing.DOWN));
-            }
+            EnumSet<EnumFacing> validSides = face == null
+                    ? EnumSet.noneOf(EnumFacing.class)
+                    : EnumSet.of(face.getOpposite());
+            this.innerProxy.setValidSides(validSides);
+            // Find the attached AE host directly below the spark, just as the
+            // external side of a native ME P2P part does.
+            this.outerProxy.setValidSides(EnumSet.of(EnumFacing.DOWN));
             this.innerProxy.onReady();
             this.outerProxy.onReady();
         }
