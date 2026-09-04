@@ -225,14 +225,8 @@ public final class ChannelSparkNetwork {
             if (face != null) {
                 EnumSet<EnumFacing> validSides = EnumSet.of(face.getOpposite());
                 this.innerProxy.setValidSides(validSides);
+                this.outerProxy.setValidSides(validSides);
             }
-            // The outer node is a synthetic P2P endpoint. It must not use
-            // GridNode.findConnections() to join the block below the spark;
-            // only the inner node is attached to that local AE network.
-            // Otherwise every outer endpoint joins its local cable network
-            // before the P2P links are made and all networks collapse into a
-            // single cable-like grid.
-            this.outerProxy.setValidSides(EnumSet.noneOf(EnumFacing.class));
             this.innerProxy.onReady();
             this.outerProxy.onReady();
         }
@@ -250,7 +244,8 @@ public final class ChannelSparkNetwork {
                     && direction == endpoint.direction
                     && innerNode() != null && node() != null
                     && safeGrid(innerNode()) != null
-                    && safeGrid(innerNode()) == safeGrid(endpoint.node);
+                    && safeGrid(innerNode()) == safeGrid(endpoint.node)
+                    && safeGrid(node()) == safeGrid(endpoint.node);
         }
 
         private void destroy() {
@@ -919,11 +914,22 @@ if (network == null || network.isEmpty()) {
             registerConnection(localAttachment);
             repathAfterConnection(endpoint.node, proxy.innerNode());
 
-            // The outer node has no valid physical sides and therefore stays
-            // in its own synthetic grid until createP2PGridConnection links
-            // it to the matching outer endpoint.
+            // outerProxy is world-accessible, so its node discovers the
+            // target host from its synthetic P2P location during onReady().
+            // Mark that physical-looking attachment wireless as well; AE2's
+            // cable renderer must not turn it into an ordinary cable edge.
+            for (IGridConnection connection : proxy.node().getConnections()) {
+                try {
+                    IGridNode other = connection.getOtherSide(proxy.node());
+                    if (safeGrid(other) == endpointGrid) {
+                        registerConnection(connection);
+                    }
+                } catch (Throwable ignored) {
+                    // The grid may be rebuilding while a spark is ticking.
+                }
+            }
             return safeGrid(proxy.innerNode()) == endpointGrid
-                    && safeGrid(proxy.node()) != null;
+                    && safeGrid(proxy.node()) == endpointGrid;
         } catch (Throwable error) {
             logConnectionFailure("AE2 channel spark endpoint attachment",
                     endpoint.node, proxy.innerNode(), error);
