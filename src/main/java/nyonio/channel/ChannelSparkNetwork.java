@@ -275,7 +275,8 @@ public final class ChannelSparkNetwork {
              // across the wireless P2P edge. Its capacity is registered when
              // the edge is created, so do not mark it as a compressed-channel
              // barrier.
-             this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY);
+             this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY,
+                     GridFlags.CANNOT_CARRY_COMPRESSED);
             this.outerProxy.setValidSides(endpoint != null && endpoint.controllerFace
                     ? EnumSet.noneOf(EnumFacing.class)
                     : EnumSet.of(EnumFacing.DOWN));
@@ -347,7 +348,8 @@ public final class ChannelSparkNetwork {
             host.setProxy(proxy);
              // The controller-side wireless endpoint also carries the
              // compressed channel path to the selected controller face.
-             proxy.setFlags(GridFlags.DENSE_CAPACITY);
+             proxy.setFlags(GridFlags.DENSE_CAPACITY,
+                     GridFlags.CANNOT_CARRY_COMPRESSED);
             proxy.setValidSides(sides);
             proxy.onReady();
             return proxy;
@@ -541,9 +543,10 @@ public final class ChannelSparkNetwork {
                 // world-accessible host; ensureControllerFaceConnection also
                 // supplies a same-face fallback when AE2 does not discover the
                 // synthetic host automatically.
-                if (!ensureControllerFaceConnection(controller, channelProxy, face)
-                        || !ensureControllerFaceConnection(controller, outerProxy,
-                        face)) {
+                // Only the channel proxy consumes a controller channel. The
+                // outer proxy is world-accessible and joins through AE2's
+                // neighbour discovery as the native ME P2P endpoint.
+                if (!ensureControllerFaceConnection(controller, channelProxy, face)) {
                     destroyControllerInputs();
                     return false;
                 }
@@ -559,19 +562,16 @@ public final class ChannelSparkNetwork {
                     || controllerChannelProxies.size() != controllerFaces.size()) {
                 return false;
             }
-            Object controllerGrid = safeGrid(controller);
-            if (controllerGrid == null) {
+            if (safeGrid(controller) == null) {
                 return false;
             }
             for (int index = 0; index < controllerFaces.size(); index++) {
                 IGridNode channelNode = controllerChannelProxies.get(index).getNode();
                 IGridNode outerNode = controllerOuterProxies.get(index).getNode();
                 if (channelNode == null || outerNode == null
-                        || safeGrid(channelNode) != controllerGrid
-                        || safeGrid(outerNode) != controllerGrid
-                        || !hasDirectConnection(controller, channelNode)
-                        || (!hasDirectConnection(controller, outerNode)
-                        && !sameGrid(controller, outerNode))) {
+                        || !sameGrid(controller, channelNode)
+                        || !sameGrid(controller, outerNode)
+                        || !hasDirectConnection(controller, channelNode)) {
                     return false;
                 }
             }
