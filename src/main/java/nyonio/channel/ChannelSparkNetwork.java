@@ -754,10 +754,10 @@ public final class ChannelSparkNetwork {
     private static List<EntityChannelSpark> collectUniqueLogicalEndpoints(
             EntityChannelSpark main, List<EntityChannelSpark> nearby,
             double maxDistance) {
-        List<EntityChannelSpark> representatives = new ArrayList<>();
-        List<IGridNode> representativeNodes = new ArrayList<>();
+        List<EntityChannelSpark> endpoints = new ArrayList<>();
+        Set<UUID> seen = new HashSet<>();
         if (main == null || nearby == null) {
-            return representatives;
+            return endpoints;
         }
         IGridNode sourceNode = getSparkEndpointNode(main);
         for (EntityChannelSpark candidate : nearby) {
@@ -774,21 +774,13 @@ public final class ChannelSparkNetwork {
                     || (sourceNode != null && sameGrid(sourceNode, candidateNode))) {
                 continue;
             }
-            int existingIndex = -1;
-            for (int index = 0; index < representativeNodes.size(); index++) {
-                if (sameGrid(representativeNodes.get(index), candidateNode)) {
-                    existingIndex = index;
-                    break;
-                }
-            }
-            if (existingIndex < 0) {
-                representativeNodes.add(candidateNode);
-                representatives.add(candidate);
-            } else if (isEarlier(candidate, representatives.get(existingIndex))) {
-                representatives.set(existingIndex, candidate);
+            // Entity UUID is the endpoint identity. Do not collapse separate
+            // channel sparks merely because they target the same AE2 grid.
+            if (seen.add(candidate.getUniqueID())) {
+                endpoints.add(candidate);
             }
         }
-        Collections.sort(representatives, new Comparator<EntityChannelSpark>() {
+        Collections.sort(endpoints, new Comparator<EntityChannelSpark>() {
             @Override
             public int compare(EntityChannelSpark first, EntityChannelSpark second) {
                 if (first.getPlacementOrder() != second.getPlacementOrder()) {
@@ -798,7 +790,7 @@ public final class ChannelSparkNetwork {
                 return Integer.compare(first.getEntityId(), second.getEntityId());
             }
         });
-        return representatives;
+        return endpoints;
     }
 
     private static void reconcileLogicalLinks(EntityChannelSpark main,
@@ -898,10 +890,10 @@ public final class ChannelSparkNetwork {
     private static List<EntityChannelSpark> collectUniqueEndpointSparks(
             EntityChannelSpark main, List<EntityChannelSpark> network,
             BridgeProxy mainProxy) {
-        List<EntityChannelSpark> representatives = new ArrayList<>();
-        List<IGridNode> representativeNodes = new ArrayList<>();
+        List<EntityChannelSpark> endpoints = new ArrayList<>();
+        Set<UUID> seen = new HashSet<>();
         if (main == null || network == null || mainProxy == null) {
-            return representatives;
+            return endpoints;
         }
         IGridNode sourceNode = mainProxy.outerNode();
         if (sourceNode == null && !mainProxy.getControllerOuterProxies().isEmpty()) {
@@ -917,21 +909,13 @@ public final class ChannelSparkNetwork {
                     || (sourceNode != null && sameGrid(sourceNode, targetNode))) {
                 continue;
             }
-            int existingIndex = -1;
-            for (int index = 0; index < representativeNodes.size(); index++) {
-                if (sameGrid(representativeNodes.get(index), targetNode)) {
-                    existingIndex = index;
-                    break;
-                }
-            }
-            if (existingIndex < 0) {
-                representativeNodes.add(targetNode);
-                representatives.add(spark);
-            } else if (isEarlier(spark, representatives.get(existingIndex))) {
-                representatives.set(existingIndex, spark);
+            // Different channel spark entities remain different P2P outputs,
+            // even when their attached AE2 blocks share one grid.
+            if (seen.add(spark.getUniqueID())) {
+                endpoints.add(spark);
             }
         }
-        Collections.sort(representatives, new Comparator<EntityChannelSpark>() {
+        Collections.sort(endpoints, new Comparator<EntityChannelSpark>() {
             @Override
             public int compare(EntityChannelSpark first, EntityChannelSpark second) {
                 if (first.getPlacementOrder() != second.getPlacementOrder()) {
@@ -941,7 +925,7 @@ public final class ChannelSparkNetwork {
                 return Integer.compare(first.getEntityId(), second.getEntityId());
             }
         });
-        return representatives;
+        return endpoints;
     }
 
     public static void showNetwork(EntityPlayer player, EntityChannelSpark source) {
