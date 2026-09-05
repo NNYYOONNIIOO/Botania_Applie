@@ -271,23 +271,11 @@ public final class ChannelSparkNetwork {
             this.outerProxy = new AENetworkProxy(outerHost,
                     "botania_applie_channel_spark_outer", ItemStack.EMPTY, true);
             outerHost.setProxy(this.outerProxy);
-            // The synthetic outer node is the channel path between the
-            // controller-side input and the remote output.  Native ME P2P
-            // uses this flag for a same-grid I/O endpoint, but a channel
-            // spark deliberately bridges two formerly separate grids.  If
-            // CANNOT_CARRY_COMPRESSED is kept here, PathSegment.useDenseChannel
-            // stops at the first outer node and the remote channel spark stays
-            // red even though the P2P edge is visible.
-            // This synthetic outer node is the wireless channel path between
-            // the controller-side input and the remote spark.  It must allow
-            // compressed channels through; otherwise the visible bridge is
-            // present but the remote network receives no channel.
-            // The wireless outer endpoint is part of the channel path in
-            // this synthetic implementation.  Allow compressed channels to
-            // cross it; otherwise AE2 can render the P2P edge while pathing
-            // stops before the remote channel spark.
-             this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY,
-                     GridFlags.CANNOT_CARRY_COMPRESSED);
+             // This synthetic outer node carries the compressed channel path
+             // across the wireless P2P edge. Its capacity is registered when
+             // the edge is created, so do not mark it as a compressed-channel
+             // barrier.
+             this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY);
             this.outerProxy.setValidSides(endpoint != null && endpoint.controllerFace
                     ? EnumSet.noneOf(EnumFacing.class)
                     : EnumSet.of(EnumFacing.DOWN));
@@ -357,11 +345,9 @@ public final class ChannelSparkNetwork {
                     "botania_applie_channel_spark_outer_" + suffix,
                     ItemStack.EMPTY, true);
             host.setProxy(proxy);
-            // Match AE2's native ME P2P outer endpoint.
-            // Keep the controller-side branch dense, but do not make the
-            // synthetic endpoint a compressed-channel barrier.
-             proxy.setFlags(GridFlags.DENSE_CAPACITY,
-                     GridFlags.CANNOT_CARRY_COMPRESSED);
+             // The controller-side wireless endpoint also carries the
+             // compressed channel path to the selected controller face.
+             proxy.setFlags(GridFlags.DENSE_CAPACITY);
             proxy.setValidSides(sides);
             proxy.onReady();
             return proxy;
