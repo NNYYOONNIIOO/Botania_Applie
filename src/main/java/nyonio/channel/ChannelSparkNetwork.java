@@ -286,7 +286,8 @@ public final class ChannelSparkNetwork {
             // this synthetic implementation.  Allow compressed channels to
             // cross it; otherwise AE2 can render the P2P edge while pathing
             // stops before the remote channel spark.
-            this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY);
+             this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY,
+                     GridFlags.CANNOT_CARRY_COMPRESSED);
             this.outerProxy.setValidSides(endpoint != null && endpoint.controllerFace
                     ? EnumSet.noneOf(EnumFacing.class)
                     : EnumSet.of(EnumFacing.DOWN));
@@ -359,7 +360,8 @@ public final class ChannelSparkNetwork {
             // Match AE2's native ME P2P outer endpoint.
             // Keep the controller-side branch dense, but do not make the
             // synthetic endpoint a compressed-channel barrier.
-            proxy.setFlags(GridFlags.DENSE_CAPACITY);
+             proxy.setFlags(GridFlags.DENSE_CAPACITY,
+                     GridFlags.CANNOT_CARRY_COMPRESSED);
             proxy.setValidSides(sides);
             proxy.onReady();
             return proxy;
