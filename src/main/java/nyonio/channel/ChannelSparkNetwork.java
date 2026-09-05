@@ -51,6 +51,10 @@ import java.util.WeakHashMap;
  * search/tick.
  */
 public final class ChannelSparkNetwork {
+    /** Logical links do not need to be rediscovered every entity tick. */
+    private static final long LOGICAL_LINK_RECONCILE_INTERVAL = 5L;
+    /** AE2 bridge health is checked periodically; grid changes are handled by AE2 itself. */
+    private static final long BRIDGE_HEALTH_CHECK_INTERVAL = 20L;
     private static final Set<IGridConnection> WIRELESS_CONNECTIONS =
             Collections.synchronizedSet(Collections.newSetFromMap(
                     new WeakHashMap<IGridConnection, Boolean>()));
@@ -62,6 +66,8 @@ public final class ChannelSparkNetwork {
      * bridge table is scanned once for every loaded spark.
      */
     private static final Map<World, Long> LAST_BRIDGE_CLEANUP_TICKS =
+            new WeakHashMap<>();
+    private static final Map<EntityChannelSpark, Long> LAST_LOGICAL_LINK_RECONCILIATION_TICKS =
             new WeakHashMap<>();
 
     /** Deterministic AE2 controller-face order: +X,+Y,+Z,-X,-Y,-Z. */
@@ -1076,23 +1082,43 @@ public final class ChannelSparkNetwork {
             clear(spark);
             return;
         }
-        removeInvalidLinks(spark);
-        int radius = ChannelSparkConfig.getTransferRadius();
-        double maxDistance = (double) radius * (double) radius;
-        AxisAlignedBB search = new AxisAlignedBB(
-                spark.posX - radius, spark.posY - radius, spark.posZ - radius,
-                spark.posX + radius, spark.posY + radius, spark.posZ + radius);
-        List<EntityChannelSpark> nearby = spark.world.getEntitiesWithinAABB(
-                EntityChannelSpark.class, search);
-        // Reconcile physical relay links independently of which spark is
-        // currently ticking. This permits main -> spark1 -> spark2 chains,
-        // with every hop constrained by the configured transfer radius.
-        reconcileNearbyLogicalLinks(spark, nearby, maxDistance);
+        boolean linksDue = shouldReconcileLogicalLinks(spark);
+        if (linksDue) {
+            removeInvalidLinks(spark);
+            int radius = ChannelSparkConfig.getTransferRadius();
+            double maxDistance = (double) radius * (double) radius;
+            AxisAlignedBB search = new AxisAlignedBB(
+                    spark.posX - radius, spark.posY - radius, spark.posZ - radius,
+                    spark.posX + radius, spark.posY + radius, spark.posZ + radius);
+            List<EntityChannelSpark> nearby = spark.world.getEntitiesWithinAABB(
+                    EntityChannelSpark.class, search);
+            // Reconcile physical relay links independently of which spark is
+            // currently ticking. This permits main -> spark1 -> spark2 chains,
+            // with every hop constrained by the configured transfer radius.
+            reconcileNearbyLogicalLinks(spark, nearby, maxDistance);
+        }
         if (shouldCleanupBridgeRecords(spark.world)) {
             cleanupBridgeRecords(spark.world);
         }
-        reconcileAeBridges(spark);
+        if (linksDue) {
+            reconcileAeBridges(spark);
+        }
     }
+
+    private static boolean shouldReconcileLogicalLinks(EntityChannelSpark spark) {
+        if (spark == null || spark.world == null) {
+            return false;
+        }
+        long currentTick = spark.world.getTotalWorldTime();
+        Long lastTick = LAST_LOGICAL_LINK_RECONCILIATION_TICKS.get(spark);
+        if (lastTick != null && currentTick >= lastTick
+                && currentTick - lastTick < LOGICAL_LINK_RECONCILE_INTERVAL) {
+            return false;
+        }
+        LAST_LOGICAL_LINK_RECONCILIATION_TICKS.put(spark, currentTick);
+        return true;
+    }
+
     private static void reconcileNearbyLogicalLinks(
             EntityChannelSpark source, List<EntityChannelSpark> nearby,
             double maxDistance) {
@@ -1226,9 +1252,11 @@ public final class ChannelSparkNetwork {
             BridgeKey key = new BridgeKey(main.getUniqueID(), other.getUniqueID());
             BridgeRecord existing = AE_BRIDGES.get(key);
             if (existing != null) {
+                // Connection liveness is checked by cleanupBridgeRecords on a
+                // lower-frequency health pass. Repeating getConnections() for
+                // every endpoint on every spark tick is needlessly expensive.
                 if (existing.expectedConnections == existing.connections.size()
-                        && existing.connections.size() > 0
-                        && areConnectionsAlive(existing.connections)) {
+                        && existing.connections.size() > 0) {
                     continue;
                 }
                 destroyBridge(existing);
@@ -1425,7 +1453,8 @@ if (network == null || network.isEmpty()) {
         }
         long currentTick = world.getTotalWorldTime();
         Long lastTick = LAST_BRIDGE_CLEANUP_TICKS.get(world);
-        if (lastTick != null && lastTick.longValue() == currentTick) {
+        if (lastTick != null && currentTick >= lastTick
+                && currentTick - lastTick < BRIDGE_HEALTH_CHECK_INTERVAL) {
             return false;
         }
         LAST_BRIDGE_CLEANUP_TICKS.put(world, currentTick);
