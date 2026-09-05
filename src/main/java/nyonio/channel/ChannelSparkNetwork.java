@@ -394,7 +394,7 @@ public final class ChannelSparkNetwork {
                 // is the destination. This preserves the controller route
                 // used by AE2's channel pathing.
                 IGridConnection connection = GridConnection.create(
-                        proxy.getNode(), controller, face.getOpposite());
+                        controller, proxy.getNode(), face);
                 if (connection == null) {
                     return false;
                 }
@@ -1529,11 +1529,7 @@ private static BridgeBuild createGridConnectionsIfPossible(
         // first so AE2 allocates a real compressed-channel route between the
         // two network-facing REQUIRE_CHANNEL nodes.
         AENetworkProxy inputOuter = mainProxy.acquireControllerOuterProxy();
-        AENetworkProxy inputChannel = inputOuter == null
-                ? null : mainProxy.getControllerChannelProxyForNode(
-                        inputOuter.getNode());
-        if (inputOuter == null || inputOuter.getNode() == null
-                || inputChannel == null || inputChannel.getNode() == null) {
+        if (inputOuter == null || inputOuter.getNode() == null) {
             return build;
         }
 
@@ -1546,30 +1542,23 @@ private static BridgeBuild createGridConnectionsIfPossible(
                 return build;
             }
 
-            IGridConnection channelConnection = createP2PGridConnection(
-                    inputChannel.getNode(), secondProxy.innerNode());
-            if (channelConnection == null) {
-                secondProxy.destroy();
-                return build;
-            }
-
-            // Keep a separate outer edge for the P2P topology. It is not used
-            // as the channel route; the channel edge above is what supplies
-            // channels to the remote network.
-            IGridConnection outerConnection = createP2PGridConnection(
+            // Match PartP2PTunnelME: only the two dense outer endpoints are
+            // connected across the P2P boundary. The REQUIRE_CHANNEL proxy
+            // on each side remains on its own local network and receives its
+            // channel through that network's controller route.
+            IGridConnection connection = createP2PGridConnection(
                     inputOuter.getNode(), secondProxy.outerNode());
-            if (outerConnection == null) {
-                destroyConnection(channelConnection);
+            if (connection == null) {
                 secondProxy.destroy();
                 return build;
             }
 
             wakeProxy(inputOuter);
-            wakeProxy(inputChannel);
+            wakeProxy(mainProxy.getControllerChannelProxyForNode(
+                    inputOuter.getNode()));
             mainProxy.wakeControllerChannelInputs();
             wakeProxy(secondProxy.innerProxy);
-            build.connections.add(channelConnection);
-            build.connections.add(outerConnection);
+            build.connections.add(connection);
             build.proxies.add(secondProxy);
             return build;
         } catch (Throwable error) {
