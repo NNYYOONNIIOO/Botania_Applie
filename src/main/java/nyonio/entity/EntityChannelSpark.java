@@ -30,6 +30,8 @@ public class EntityChannelSpark extends Entity {
 
     private BlockPos targetPos;
     private long placementOrder;
+    private long lastWandInteractionTick = Long.MIN_VALUE;
+    private UUID lastWandInteractor;
     private final Map<UUID, ChannelSparkNetwork.Link> links = new HashMap<>();
 
     public EntityChannelSpark(World world) {
@@ -163,12 +165,25 @@ return new ItemStack(isMainChannelSpark()
 
     @Override
     public EnumActionResult applyPlayerInteraction(EntityPlayer player, Vec3d hitVector, EnumHand hand) {
-        return processInitialInteract(player, hand)
+        return interactWithTwigWand(player, hand)
                 ? EnumActionResult.SUCCESS : EnumActionResult.PASS;
     }
 
     @Override
     public boolean processInitialInteract(EntityPlayer player, EnumHand hand) {
+        return interactWithTwigWand(player, hand);
+    }
+
+    /**
+     * Handles the same forest-wand interaction as Botania's EntitySpark.
+     * Forge can deliver an entity-interaction event before the normal entity
+     * callback, so this method is shared by both entry points and suppresses
+     * an accidental double action in the same server tick.
+     */
+    public boolean interactWithTwigWand(EntityPlayer player, EnumHand hand) {
+        if (player == null || hand == null) {
+            return false;
+        }
         ItemStack stack = player.getHeldItem(hand);
         if (stack.isEmpty() || stack.getItem() != ModItems.twigWand) {
             return false;
@@ -179,8 +194,19 @@ return new ItemStack(isMainChannelSpark()
             return true;
         }
 
+        long tick = world.getTotalWorldTime();
+        UUID playerId = player.getUniqueID();
+        if (lastWandInteractionTick == tick
+                && playerId != null && playerId.equals(lastWandInteractor)) {
+            return true;
+        }
+        lastWandInteractionTick = tick;
+        lastWandInteractor = playerId;
+
         if (player.isSneaking()) {
-            entityDropItem(new ItemStack(nyonio.BotaniaApplie.channelSpark), 0.0F);
+            entityDropItem(new ItemStack(isMainChannelSpark()
+                    ? nyonio.BotaniaApplie.mainChannelSpark
+                    : nyonio.BotaniaApplie.channelSpark), 0.0F);
             setDead();
         } else {
             ChannelSparkNetwork.showNetwork(player, this);

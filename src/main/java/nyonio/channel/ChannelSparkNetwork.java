@@ -1605,21 +1605,21 @@ if (network == null || network.isEmpty()) {
         IGridConnection existing = findDirectGridConnection(first, second);
         if (existing != null) {
             registerConnection(existing);
+            repathAfterConnection(first, second);
             return existing;
         }
-        PENDING_CHANNEL_CAPACITY.set(ChannelSparkConfig.getChannelCapacity());
         try {
-            // This is the same outer-node connection used by AE2 ME P2P.
-            IGridConnection connection = AEApi.instance().grid()
-                    .createGridConnection(first, second);
-            registerConnection(connection);
-            repathAfterConnection(first, second);
-            return connection;
+            // Use the common factory so the wireless edge receives the same
+            // capacity registration and path rebuild as every other channel
+            // spark bridge. The direct AE2 convenience call can bypass the
+            // GridConnection mixin on this 1.12.2 build.
+            Object created = createGridConnection(first, second,
+                    AEPartLocation.INTERNAL);
+            return created instanceof IGridConnection
+                    ? (IGridConnection) created : null;
         } catch (Throwable error) {
             logConnectionFailure("AE2 P2P outer connection", first, second, error);
             return null;
-        } finally {
-            PENDING_CHANNEL_CAPACITY.remove();
         }
     }
 
@@ -2341,14 +2341,11 @@ if (network == null || network.isEmpty()) {
             return false;
         }
         try {
-            if (!node.isActive()) {
-                return false;
-            }
-            // A channel spark is an external bridge.  The endpoint itself may
-            // be a CANNOT_CARRY machine node (for example an ME interface),
-            // but it must still be a live AE node.  Rejecting that flag here
-            // prevents the spark bridge from ever reaching the ME network.
-            return true;
+            // A channel spark is precisely what supplies a missing channel.
+            // Do not reject an otherwise live node merely because AE2 has not
+            // activated it yet; interfaces and devices can be inactive while
+            // waiting for the channel that this bridge is about to provide.
+            return node.getGrid() != null;
         } catch (Throwable ignored) {
             return false;
         }
