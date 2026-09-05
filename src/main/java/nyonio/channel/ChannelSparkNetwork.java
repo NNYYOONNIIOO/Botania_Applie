@@ -980,17 +980,14 @@ public final class ChannelSparkNetwork {
                 continue;
             }
             IGridNode targetNode = getSparkEndpointNode(spark);
-            boolean sameSourceGrid = sourceNode != null
-                    && sameGrid(sourceNode, targetNode);
             if (targetNode == null
-                    || (sameSourceGrid && !hasExistingAeBridge(main, spark))) {
+                    || (sourceNode != null && sourceNode == targetNode)) {
                 continue;
             }
             // Different channel spark entities remain different P2P outputs,
-            // even when their attached AE2 blocks share one grid.  Keep an
-            // existing pair after AE2 merges the two grids through its native
-            // outer-node connection; otherwise reconciliation would remove
-            // the bridge immediately after it was created.
+            // even when their attached AE2 blocks share one grid. AE2 merges
+            // grids across native P2P outer connections, so comparing logical
+            // grid identity here would discard every later output branch.
             if (seen.add(spark.getUniqueID())) {
                 endpoints.add(spark);
             }
