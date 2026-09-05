@@ -1157,7 +1157,7 @@ public final class ChannelSparkNetwork {
 
         for (int index = 0; index < queue.size(); index++) {
             EntityChannelSpark current = queue.get(index);
-            for (Link link : new ArrayList<>(current.getLinks().values())) {
+            for (Link link : current.getLinks().values()) {
                 EntityChannelSpark other = link.other;
                 if (other == null || other.isDead || !isPrimaryInBlock(other)
                         || !isHubLink(current, other)
@@ -1252,7 +1252,6 @@ public final class ChannelSparkNetwork {
                 clear(spark);
                 continue;
             }
-            removeInvalidLinks(spark);
             List<EntityChannelSpark> nearby = spatialIndex.findNearby(
                     spark, maxDistance);
             reconcileNearbyLogicalLinks(spark, nearby, maxDistance);
@@ -1297,10 +1296,14 @@ public final class ChannelSparkNetwork {
 
         // Remove stale local edges. unlink() also removes the reciprocal
         // edge, keeping the relay graph symmetric for its BFS traversal.
+        boolean sourceEndpointUsable = hasUsableEndpoint(source);
         for (Link link : new ArrayList<>(source.getLinks().values())) {
             EntityChannelSpark other = link.other;
             if (other == null || !desired.contains(other.getUniqueID())) {
                 unlink(source, other, link.connection);
+            } else if (link.connection != null
+                    && (!sourceEndpointUsable || !hasUsableEndpoint(other))) {
+                downgradeConnection(source, other, link.connection);
             }
         }
 
@@ -1594,7 +1597,7 @@ if (network == null || network.isEmpty()) {
                 continue;
             }
             network.add(current);
-            for (Link link : new ArrayList<>(current.getLinks().values())) {
+            for (Link link : current.getLinks().values()) {
                 EntityChannelSpark other = link.other;
                 if (other != null && !other.isDead && other.world == source.world
                         && isPrimaryInBlock(other) && isHubLink(current, other)
