@@ -11,6 +11,10 @@ import nyonio.BotaniaApplie;
 @SideOnly(Side.CLIENT)
 @Mod.EventBusSubscriber(modid = BotaniaApplie.MODID, value = Side.CLIENT)
 public final class ChannelSparkTextureHandler {
+    private static final ResourceLocation CHANNEL_SPARK_SPRITE =
+            new ResourceLocation(BotaniaApplie.MODID, "items/channel_spark");
+    private static final ResourceLocation MAIN_CHANNEL_SPARK_SPRITE =
+            new ResourceLocation(BotaniaApplie.MODID, "items/main_channel_spark");
     private static final ResourceLocation BOTANIA_SPARK_SPRITE =
             new ResourceLocation("botania", "items/spark");
 
@@ -19,6 +23,8 @@ public final class ChannelSparkTextureHandler {
 
     @SubscribeEvent
     public static void registerBotaniaSparkSprite(TextureStitchEvent.Pre event) {
+        event.getMap().registerSprite(CHANNEL_SPARK_SPRITE);
+        event.getMap().registerSprite(MAIN_CHANNEL_SPARK_SPRITE);
         event.getMap().registerSprite(BOTANIA_SPARK_SPRITE);
     }
 }
