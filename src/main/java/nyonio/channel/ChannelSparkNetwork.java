@@ -473,6 +473,19 @@ public final class ChannelSparkNetwork {
             return true;
         }
 
+        /** Wake the synthetic input nodes after the P2P path is rebuilt. */
+        private void wakeControllerChannelInputs() {
+            for (AENetworkProxy proxy : controllerChannelProxies) {
+                if (proxy == null || proxy.getNode() == null) {
+                    continue;
+                }
+                try {
+                    proxy.getTick().wakeDevice(proxy.getNode());
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+
         private boolean attachControllerBridgeNodes(IGridNode controller) {
             if (controller == null || innerNode() == null || outerNode() == null) {
                 return false;
@@ -1410,6 +1423,7 @@ if (network == null || network.isEmpty()) {
                 secondProxy.destroy();
                 return build;
             }
+            mainProxy.wakeControllerChannelInputs();
             build.connections.add(connection);
             build.proxies.add(secondProxy);
             return build;
