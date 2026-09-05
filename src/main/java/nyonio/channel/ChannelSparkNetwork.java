@@ -128,6 +128,21 @@ public final class ChannelSparkNetwork {
         }
     }
 
+    /**
+     * A native AE2 P2P edge can make both endpoint nodes report the same
+     * logical grid.  That must not make an already established spark bridge
+     * disappear during the next reconciliation pass; before the edge exists,
+     * however, same-grid sparks are still not valid P2P destinations.
+     */
+    private static boolean hasExistingAeBridge(EntityChannelSpark first,
+                                               EntityChannelSpark second) {
+        if (first == null || second == null) {
+            return false;
+        }
+        return AE_BRIDGES.containsKey(new BridgeKey(
+                first.getUniqueID(), second.getUniqueID()));
+    }
+
     /** Lightweight IGridProxyable host used by an AE2-style outer proxy. */
     /** Lightweight IGridProxyable host used by an AE2-style outer proxy. */
     private static final class ProxyHost implements IGridProxyable {
@@ -828,13 +843,10 @@ public final class ChannelSparkNetwork {
                 continue;
             }
             IGridNode candidateNode = getSparkEndpointNode(candidate);
-            // AE2 merges the endpoint grids into one graph when the native
-            // P2P connection is created.  Comparing grid identity here would
-            // therefore remove every valid bridge on the next reconciliation
-            // tick.  Only the exact same node is the source itself; distinct
-            // nodes must remain eligible even after a P2P edge exists.
+            boolean sameSourceGrid = sourceNode != null
+                    && sameGrid(sourceNode, candidateNode);
             if (candidateNode == null
-                    || (sourceNode != null && sourceNode == candidateNode)) {
+                    || (sameSourceGrid && !hasExistingAeBridge(main, candidate))) {
                 continue;
             }
             // Entity UUID is the endpoint identity. Do not collapse separate
@@ -968,12 +980,17 @@ public final class ChannelSparkNetwork {
                 continue;
             }
             IGridNode targetNode = getSparkEndpointNode(spark);
+            boolean sameSourceGrid = sourceNode != null
+                    && sameGrid(sourceNode, targetNode);
             if (targetNode == null
-                    || (sourceNode != null && sameGrid(sourceNode, targetNode))) {
+                    || (sameSourceGrid && !hasExistingAeBridge(main, spark))) {
                 continue;
             }
             // Different channel spark entities remain different P2P outputs,
-            // even when their attached AE2 blocks share one grid.
+            // even when their attached AE2 blocks share one grid.  Keep an
+            // existing pair after AE2 merges the two grids through its native
+            // outer-node connection; otherwise reconciliation would remove
+            // the bridge immediately after it was created.
             if (seen.add(spark.getUniqueID())) {
                 endpoints.add(spark);
             }
