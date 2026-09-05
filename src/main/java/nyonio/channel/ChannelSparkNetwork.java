@@ -1492,6 +1492,7 @@ private static BridgeBuild createGridConnectionsIfPossible(
             wakeProxy(inputOuter);
             wakeProxy(mainProxy.getControllerChannelProxyForNode(
                     inputOuter.getNode()));
+            mainProxy.wakeControllerChannelInputs();
             wakeProxy(secondProxy.innerProxy);
             build.connections.add(connection);
             build.proxies.add(secondProxy);
@@ -1592,6 +1593,7 @@ private static boolean attachOutputProxy(BridgeProxy proxy,
             if (!proxy.attachments.contains(localConnection)) {
                 proxy.attachments.add(localConnection);
             }
+            registerConnection(localConnection);
             repathAfterConnection(endpoint.node, proxy.innerNode());
 
             // The outer proxy normally discovers the endpoint through its DOWN
@@ -1616,6 +1618,7 @@ private static boolean attachOutputProxy(BridgeProxy proxy,
                 if (!proxy.attachments.contains(outerConnection)) {
                     proxy.attachments.add(outerConnection);
                 }
+                registerConnection(outerConnection);
                 repathAfterConnection(endpoint.node, proxy.outerNode());
             }
             return sameGrid(proxy.innerNode(), endpoint.node)

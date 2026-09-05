@@ -3,7 +3,6 @@ package nyonio.mixin;
 import appeng.api.networking.IGridConnection;
 import appeng.api.networking.IGridNode;
 import appeng.api.parts.IPart;
-import appeng.api.util.AEPartLocation;
 import net.minecraft.nbt.NBTTagCompound;
 import nyonio.channel.ChannelSparkNetwork;
 import org.spongepowered.asm.mixin.Mixin;
@@ -50,8 +49,7 @@ public abstract class MixinPartCableInternalChannels {
             int channels = 0;
             for (IGridConnection connection : node.getConnections()) {
                 if (connection == null
-                        || !ChannelSparkNetwork.isWirelessConnection(connection)
-                        || connection.getDirection(node) != AEPartLocation.INTERNAL) {
+                        || !ChannelSparkNetwork.isWirelessConnection(connection)) {
                     continue;
                 }
                 channels = Math.max(channels, connection.getUsedChannels());
