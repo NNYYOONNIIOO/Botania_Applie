@@ -347,10 +347,11 @@ public final class ChannelSparkNetwork {
             DimensionalCoord location = new DimensionalCoord(
                     controllerLocation.getWorld(), position);
             EnumSet<EnumFacing> sides = EnumSet.of(outward.getOpposite());
-            ProxyHost host = new ProxyHost(this.anchor, location, sides);
+            ProxyHost host = new ProxyHost(this.anchor, location,
+                    EnumSet.noneOf(EnumFacing.class));
             AENetworkProxy proxy = new AENetworkProxy(host,
                     "botania_applie_channel_spark_outer_" + suffix,
-                    ItemStack.EMPTY, true);
+                    ItemStack.EMPTY, false);
             host.setProxy(proxy);
             // This outer proxy participates in the wireless channel path, so
             // it must be a dense carrier rather than a compressed-channel
@@ -359,7 +360,7 @@ public final class ChannelSparkNetwork {
             // The controller-side synthetic outer node is also part of the
             // wireless channel path and must not block compressed channels.
             proxy.setFlags(GridFlags.DENSE_CAPACITY);
-            proxy.setValidSides(sides);
+            proxy.setValidSides(EnumSet.noneOf(EnumFacing.class));
             proxy.onReady();
             return proxy;
         }
@@ -392,6 +393,37 @@ public final class ChannelSparkNetwork {
             } catch (Throwable error) {
                 logConnectionFailure("controller face input attachment",
                         controller, proxy.getNode(), error);
+                return false;
+            }
+        }
+
+        private boolean ensureControllerBranchConnection(
+                AENetworkProxy channelProxy, AENetworkProxy outerProxy) {
+            if (channelProxy == null || outerProxy == null
+                    || channelProxy.getNode() == null
+                    || outerProxy.getNode() == null) {
+                return false;
+            }
+            try {
+                IGridConnection connection = findDirectGridConnection(
+                        channelProxy.getNode(), outerProxy.getNode());
+                if (connection == null) {
+                    connection = GridConnection.create(channelProxy.getNode(),
+                            outerProxy.getNode(), AEPartLocation.INTERNAL);
+                }
+                if (connection == null) {
+                    return false;
+                }
+                if (!attachments.contains(connection)) {
+                    attachments.add(connection);
+                }
+                repathAfterConnection(channelProxy.getNode(),
+                        outerProxy.getNode());
+                return hasDirectConnection(channelProxy.getNode(),
+                        outerProxy.getNode());
+            } catch (Throwable error) {
+                logConnectionFailure("controller channel-to-P2P attachment",
+                        channelProxy.getNode(), outerProxy.getNode(), error);
                 return false;
             }
         }
@@ -513,7 +545,8 @@ public final class ChannelSparkNetwork {
                 // supplies a same-face fallback when AE2 does not discover the
                 // synthetic host automatically.
                 if (!ensureControllerFaceConnection(controller, channelProxy, face)
-                        || !ensureControllerFaceConnection(controller, outerProxy, face)) {
+                        || !ensureControllerBranchConnection(channelProxy,
+                        outerProxy)) {
                     destroyControllerInputs();
                     return false;
                 }
@@ -540,8 +573,7 @@ public final class ChannelSparkNetwork {
                         || safeGrid(channelNode) != controllerGrid
                         || safeGrid(outerNode) != controllerGrid
                         || !hasDirectConnection(controller, channelNode)
-                        || (!hasDirectConnection(controller, outerNode)
-                        && !sameGrid(controller, outerNode))) {
+                        || !hasDirectConnection(channelNode, outerNode)) {
                     return false;
                 }
             }
