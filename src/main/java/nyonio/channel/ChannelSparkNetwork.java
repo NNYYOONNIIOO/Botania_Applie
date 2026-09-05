@@ -278,7 +278,8 @@ public final class ChannelSparkNetwork {
             // CANNOT_CARRY_COMPRESSED is kept here, PathSegment.useDenseChannel
             // stops at the first outer node and the remote channel spark stays
             // red even though the P2P edge is visible.
-            this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY);
+            this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY,
+                    GridFlags.CANNOT_CARRY_COMPRESSED);
             this.outerProxy.setValidSides(endpoint != null && endpoint.controllerFace
                     ? EnumSet.noneOf(EnumFacing.class)
                     : EnumSet.of(EnumFacing.DOWN));
@@ -352,7 +353,8 @@ public final class ChannelSparkNetwork {
             // it must be a dense carrier rather than a compressed-channel
             // barrier.  The bridge connection itself still has the configured
             // 32-channel capacity through createP2PGridConnection().
-            proxy.setFlags(GridFlags.DENSE_CAPACITY);
+            proxy.setFlags(GridFlags.DENSE_CAPACITY,
+                    GridFlags.CANNOT_CARRY_COMPRESSED);
             proxy.setValidSides(sides);
             proxy.onReady();
             return proxy;
@@ -1602,7 +1604,6 @@ private static boolean attachOutputProxy(BridgeProxy proxy,
             if (!proxy.attachments.contains(localConnection)) {
                 proxy.attachments.add(localConnection);
             }
-            registerConnection(localConnection);
             repathAfterConnection(endpoint.node, proxy.innerNode());
 
             // The outer proxy normally discovers the endpoint through its DOWN
@@ -1627,7 +1628,6 @@ private static boolean attachOutputProxy(BridgeProxy proxy,
                 if (!proxy.attachments.contains(outerConnection)) {
                     proxy.attachments.add(outerConnection);
                 }
-                registerConnection(outerConnection);
                 repathAfterConnection(endpoint.node, proxy.outerNode());
             }
             return sameGrid(proxy.innerNode(), endpoint.node)
