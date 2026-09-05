@@ -438,13 +438,16 @@ public final class ChannelSparkNetwork {
                 controllerChannelProxies.add(channelProxy);
                 controllerOuterProxies.add(outerProxy);
                 controllerFaces.add(face);
-                if (!ensureControllerFaceConnection(controller, channelProxy, face)
-                        || !ensureControllerFaceConnection(controller, outerProxy, face)) {
+                // Match PartP2PTunnelME: the local input proxy consumes a
+                // controller channel; the outer proxy remains an isolated
+                // dense P2P endpoint and is connected only to the remote outer
+                // proxy by AEApi.grid().createGridConnection(). Its
+                // world-accessible host discovers the controller side itself.
+                if (!ensureControllerFaceConnection(controller, channelProxy, face)) {
                     destroyControllerInputs();
                     return false;
                 }
                 repathAfterConnection(controller, channelProxy.getNode());
-                repathAfterConnection(controller, outerProxy.getNode());
             }
             return !controllerChannelProxies.isEmpty();
         }
@@ -466,7 +469,8 @@ public final class ChannelSparkNetwork {
                         || safeGrid(channelNode) != controllerGrid
                         || safeGrid(outerNode) != controllerGrid
                         || !hasDirectConnection(controller, channelNode)
-                        || !hasDirectConnection(controller, outerNode)) {
+                        || (!hasDirectConnection(controller, outerNode)
+                        && !sameGrid(controller, outerNode))) {
                     return false;
                 }
             }
