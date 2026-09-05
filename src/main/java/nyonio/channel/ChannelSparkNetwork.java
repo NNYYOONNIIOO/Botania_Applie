@@ -818,20 +818,17 @@ public final class ChannelSparkNetwork {
         return first.getEntityId() < second.getEntityId();
     }
 
+    /**
+     * Channel sparks form a physical relay graph. Main and regular sparks
+     * can both be neighbours; limiting this to main-to-output pairs prevents
+     * a second hop from becoming reachable by the AE2 bridge reconciliation.
+     */
     private static boolean isHubLink(EntityChannelSpark first,
-                                       EntityChannelSpark second) {
-        if (first == null || second == null || first == second
-                || first.isDead || second.isDead
-                || !isPrimaryInBlock(first) || !isPrimaryInBlock(second)) {
-            return false;
-        }
-        boolean firstMain = first.isMainChannelSpark();
-        boolean secondMain = second.isMainChannelSpark();
-        if (firstMain == secondMain) {
-            return false;
-        }
-        EntityChannelSpark main = firstMain ? first : second;
-        return hasControllerEndpoint(main);
+                                     EntityChannelSpark second) {
+        return first != null && second != null && first != second
+                && !first.isDead && !second.isDead
+                && first.world != null && first.world == second.world
+                && isPrimaryInBlock(first) && isPrimaryInBlock(second);
     }
 
     private static EntityChannelSpark findLocalMainSpark(
@@ -1090,14 +1087,52 @@ public final class ChannelSparkNetwork {
                 spark.posX + radius, spark.posY + radius, spark.posZ + radius);
         List<EntityChannelSpark> nearby = spark.world.getEntitiesWithinAABB(
                 EntityChannelSpark.class, search);
-        EntityChannelSpark main = findLocalMainSpark(spark, nearby, maxDistance);
-        if (main != null) {
-            reconcileLogicalLinks(main,
-                    collectUniqueLogicalEndpoints(main, nearby, maxDistance));
-        }
+        // Reconcile physical relay links independently of which spark is
+        // currently ticking. This permits main -> spark1 -> spark2 chains,
+        // with every hop constrained by the configured transfer radius.
+        reconcileNearbyLogicalLinks(spark, nearby, maxDistance);
         cleanupBridgeRecords();
         reconcileAeBridges(spark);
     }
+    private static void reconcileNearbyLogicalLinks(
+            EntityChannelSpark source, List<EntityChannelSpark> nearby,
+            double maxDistance) {
+        if (source == null || source.isDead || source.world == null) {
+            return;
+        }
+
+        Set<UUID> desired = new HashSet<>();
+        if (nearby != null) {
+            for (EntityChannelSpark candidate : nearby) {
+                if (candidate == null || candidate == source || candidate.isDead
+                        || candidate.world != source.world
+                        || !isPrimaryInBlock(candidate)
+                        || source.getDistanceSq(candidate) > maxDistance
+                        || !isHubLink(source, candidate)) {
+                    continue;
+                }
+                desired.add(candidate.getUniqueID());
+            }
+        }
+
+        // Remove stale local edges. unlink() also removes the reciprocal
+        // edge, keeping the relay graph symmetric for its BFS traversal.
+        for (Link link : new ArrayList<>(source.getLinks().values())) {
+            EntityChannelSpark other = link.other;
+            if (other == null || !desired.contains(other.getUniqueID())) {
+                unlink(source, other, link.connection);
+            }
+        }
+
+        if (nearby != null) {
+            for (EntityChannelSpark candidate : nearby) {
+                if (candidate != null && desired.contains(candidate.getUniqueID())) {
+                    connect(source, candidate);
+                }
+            }
+        }
+    }
+
 
     public static void clear(EntityChannelSpark spark) {
         if (spark == null) {
