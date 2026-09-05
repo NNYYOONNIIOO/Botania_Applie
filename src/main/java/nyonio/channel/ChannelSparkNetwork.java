@@ -2430,35 +2430,30 @@ private static boolean attachOutputProxy(BridgeProxy proxy,
      * carry the configured 32-channel capacity; a normal carrying node is a
      * safe fallback for networks that do not contain dense cabling.
      */
-    private static IGridNode findCarryingNodeFromGrid(IGridNode endpoint) {
-        IGridNode fallback = null;
-        IGridNode restrictedFallback = null;
-        try {
-            if (endpoint.getGrid() == null) {
-                return null;
-            }
-
-            // IGrid.getNodes() is part of AE2's public API. Use it directly
-            // instead of reflecting on the concrete Grid implementation; the
-            // latter can silently fail on Extended Life or other AE2 builds.
-            for (IGridNode candidate : endpoint.getGrid().getNodes()) {
-                if (!isCarryingNode(candidate)) {
-                    continue;
-                }
-                if (isPreferredCarryingNode(candidate)) {
-                    if (hasDenseCapacity(candidate)) {
-                        return candidate;
-                    }
-                    if (fallback == null) {
-                        fallback = candidate;
-                    }
-                } else if (restrictedFallback == null) {
-                    restrictedFallback = candidate;
-                }
-            }
-        } catch (Throwable ignored) {
+private static IGridNode findCarryingNodeFromGrid(IGridNode endpoint) {
+        if (endpoint == null || endpoint.getGrid() == null) {
+            return null;
         }
-        return fallback == null ? restrictedFallback : fallback;
+
+        IGridNode nonCableFallback = null;
+        IGridNode cableFallback = null;
+        for (IGridNode candidate : endpoint.getGrid().getNodes()) {
+            if (candidate == null || candidate == endpoint || !isUsable(candidate)) {
+                continue;
+            }
+            // Keep controllers/dense nodes preferred, but do not reject a
+            // normal AE2 machine or cable: every connected grid node can be
+            // the physical channel carrier for a wireless endpoint.
+            if (isPreferredCarryingNode(candidate)) {
+                return candidate;
+            }
+            if (!isCableNode(candidate) && nonCableFallback == null) {
+                nonCableFallback = candidate;
+            } else if (cableFallback == null) {
+                cableFallback = candidate;
+            }
+        }
+        return nonCableFallback != null ? nonCableFallback : cableFallback;
     }
 
     private static boolean hasDenseCapacity(IGridNode node) {
@@ -2485,18 +2480,10 @@ private static boolean attachOutputProxy(BridgeProxy proxy,
         }
     }
 
-    private static boolean isCarryingNode(IGridNode node) {
-        try {
-            // Do not require isActive() here. A network may report a machine
-            // as inactive precisely because it is waiting for a channel; the
-            // wireless bridge must be allowed to connect before AE2 can
-            // recalculate that channel state. The node must already belong to
-            // an AE grid and must be able to carry a route.
-            return node != null && node.getGrid() != null
-                    && !node.hasFlag(GridFlags.CANNOT_CARRY);
-        } catch (Throwable ignored) {
-            return false;
-        }
+private static boolean isCarryingNode(IGridNode node) {
+        // Channel sparks must be able to use ordinary AE2 machines and
+        // cables, not only ME controllers or dense-capacity nodes.
+        return node != null && isUsable(node);
     }
 
     private static IGridNode findGridNodeOnObject(Object object) {
@@ -2598,23 +2585,28 @@ private static boolean attachOutputProxy(BridgeProxy proxy,
         return null;
     }
 
-    private static IGridNode findCarryingGridNodeOnHost(IGridHost host) {
+private static IGridNode findCarryingGridNodeOnHost(IGridHost host) {
         if (host == null) {
             return null;
         }
-        try {
-            IGridNode internal = host.getGridNode(AEPartLocation.INTERNAL);
-            IGridNode bridgeNode = selectBridgeNode(internal);
-            if (bridgeNode != null) {
-                return bridgeNode;
+
+        IGridNode fallback = null;
+        for (AEPartLocation direction : AEPartLocation.values()) {
+            IGridNode candidate = host.getGridNode(direction);
+            if (!isUsable(candidate)) {
+                continue;
             }
-        } catch (Throwable ignored) {
+            // INTERNAL is the natural node for a block/device.  Prefer it,
+            // while still accepting any active side node exposed by a host.
+            if (direction == AEPartLocation.INTERNAL
+                    || isPreferredCarryingNode(candidate)) {
+                return candidate;
+            }
+            if (fallback == null) {
+                fallback = candidate;
+            }
         }
-        // A side node has a meaningful direction only when it belongs to the
-        // part that owns that side. A wireless bridge has no physical side,
-        // so using one here can make AE2 calculate a null direction while it
-        // builds cable collision boxes. Only the host's internal node is safe.
-        return null;
+        return fallback;
     }
 
     /**
@@ -2635,25 +2627,24 @@ private static boolean attachOutputProxy(BridgeProxy proxy,
         return endpoint;
     }
 
-    private static IGridNode findNonCableCarryingNodeFromGrid(IGridNode endpoint) {
-        IGridNode fallback = null;
-        try {
-            if (endpoint.getGrid() == null) {
-                return null;
-            }
-            for (IGridNode candidate : endpoint.getGrid().getNodes()) {
-                if (!isCarryingNode(candidate) || isCableNode(candidate)) {
-                    continue;
-                }
-                if (isPreferredCarryingNode(candidate)) {
-                    return candidate;
-                }
-                if (fallback == null) {
-                    fallback = candidate;
-                }
-            }
-        } catch (Throwable ignored) {
+private static IGridNode findNonCableCarryingNodeFromGrid(IGridNode endpoint) {
+        if (endpoint == null || endpoint.getGrid() == null) {
+            return null;
         }
+
+        IGridNode fallback = null;
+        for (IGridNode candidate : endpoint.getGrid().getNodes()) {
+            if (candidate == null || candidate == endpoint || !isUsable(candidate)) {
+                continue;
+            }
+            if (!isCableNode(candidate)) {
+                return candidate;
+            }
+            if (fallback == null) {
+                fallback = candidate;
+            }
+        }
+        // A network made entirely of cables is still a valid channel source.
         return fallback;
     }
 
