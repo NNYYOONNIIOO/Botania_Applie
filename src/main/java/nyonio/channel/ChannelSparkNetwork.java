@@ -1526,7 +1526,11 @@ private static BridgeBuild createGridConnectionsIfPossible(
         // +X,+Y,+Z,-X,-Y,-Z order; one input may have multiple outputs, just as
         // one native ME P2P input can serve multiple output tunnels.
         AENetworkProxy inputOuter = mainProxy.acquireControllerOuterProxy();
-        if (inputOuter == null || inputOuter.getNode() == null) {
+        AENetworkProxy inputChannel = inputOuter == null
+                ? null : mainProxy.getControllerChannelProxyForNode(
+                        inputOuter.getNode());
+        if (inputOuter == null || inputOuter.getNode() == null
+                || inputChannel == null || inputChannel.getNode() == null) {
             return build;
         }
 
@@ -1546,12 +1550,23 @@ private static BridgeBuild createGridConnectionsIfPossible(
                 return build;
             }
 
+            // The outer P2P edge is a topology bridge. Use a separate
+            // compressed-channel edge between the paired channel proxies so
+            // the destination network receives an actual channel.
+            IGridConnection channelConnection = createP2PGridConnection(
+                    inputChannel.getNode(), secondProxy.innerNode());
+            if (channelConnection == null) {
+                destroyConnection(connection);
+                secondProxy.destroy();
+                return build;
+            }
+
             wakeProxy(inputOuter);
-            wakeProxy(mainProxy.getControllerChannelProxyForNode(
-                    inputOuter.getNode()));
+            wakeProxy(inputChannel);
             mainProxy.wakeControllerChannelInputs();
             wakeProxy(secondProxy.innerProxy);
             build.connections.add(connection);
+            build.connections.add(channelConnection);
             build.proxies.add(secondProxy);
             return build;
         } catch (Throwable error) {
