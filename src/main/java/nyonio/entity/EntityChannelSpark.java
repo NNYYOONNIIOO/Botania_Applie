@@ -38,6 +38,7 @@ public class EntityChannelSpark extends Entity {
         super(world);
         isImmuneToFire = true;
         setNoGravity(true);
+        ChannelSparkNetwork.registerSpark(this);
     }
 
     public EntityChannelSpark(World world, double x, double y, double z) {
@@ -125,6 +126,7 @@ public class EntityChannelSpark extends Entity {
     public void setDead() {
         if (!world.isRemote) {
             ChannelSparkNetwork.clear(this);
+            ChannelSparkNetwork.unregisterSpark(this);
         }
         super.setDead();
     }

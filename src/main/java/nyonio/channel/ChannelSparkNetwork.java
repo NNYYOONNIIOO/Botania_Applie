@@ -53,14 +53,17 @@ import java.util.WeakHashMap;
  * search/tick.
  */
 public final class ChannelSparkNetwork {
-    /** Logical links do not need to be rediscovered every entity tick. */
-    private static final long LOGICAL_LINK_RECONCILE_INTERVAL = 5L;
+    /**
+     * Topology changes mark a world dirty. This fallback covers integrations
+     * that change AE2 state without emitting a Forge event.
+     */
+    private static final long WORLD_REFRESH_INTERVAL = 40L;
     private static final Set<IGridConnection> WIRELESS_CONNECTIONS =
             Collections.synchronizedSet(Collections.newSetFromMap(
                     new WeakHashMap<IGridConnection, Boolean>()));
     private static final Map<BridgeKey, BridgeRecord> AE_BRIDGES = new HashMap<>();
     private static final Map<UUID, BridgeProxy> MAIN_PROXIES = new HashMap<>();
-    private static final Map<World, Long> LAST_WORLD_RECONCILIATION_TICKS =
+    private static final Map<World, WorldState> WORLD_STATES =
             new WeakHashMap<>();
 
     /** Deterministic AE2 controller-face order: +X,+Y,+Z,-X,-Y,-Z. */
@@ -70,6 +73,39 @@ public final class ChannelSparkNetwork {
     };
 
     private ChannelSparkNetwork() {
+    }
+
+    private static final class WorldState {
+        private final Set<EntityChannelSpark> sparks =
+                Collections.newSetFromMap(
+                        new WeakHashMap<EntityChannelSpark, Boolean>());
+        private long lastReconcileTick = Long.MIN_VALUE;
+        private long nextRefreshTick = Long.MIN_VALUE;
+        private boolean dirty = true;
+    }
+
+    public static void registerSpark(EntityChannelSpark spark) {
+        if (spark == null || spark.world == null || spark.world.isRemote) {
+            return;
+        }
+        WorldState state = WORLD_STATES.get(spark.world);
+        if (state == null) {
+            state = new WorldState();
+            WORLD_STATES.put(spark.world, state);
+        }
+        state.sparks.add(spark);
+        state.dirty = true;
+    }
+
+    public static void unregisterSpark(EntityChannelSpark spark) {
+        if (spark == null || spark.world == null || spark.world.isRemote) {
+            return;
+        }
+        WorldState state = WORLD_STATES.get(spark.world);
+        if (state != null) {
+            state.sparks.remove(spark);
+            state.dirty = true;
+        }
     }
 
     public static boolean isWirelessConnection(IGridConnection connection) {
@@ -1094,13 +1130,20 @@ public final class ChannelSparkNetwork {
         if (world == null) {
             return false;
         }
-        long currentTick = world.getTotalWorldTime();
-        Long lastTick = LAST_WORLD_RECONCILIATION_TICKS.get(world);
-        if (lastTick != null && currentTick >= lastTick
-                && currentTick - lastTick < LOGICAL_LINK_RECONCILE_INTERVAL) {
+        WorldState state = WORLD_STATES.get(world);
+        if (state == null || state.sparks.isEmpty()) {
             return false;
         }
-        LAST_WORLD_RECONCILIATION_TICKS.put(world, currentTick);
+        long currentTick = world.getTotalWorldTime();
+        if (state.lastReconcileTick == currentTick) {
+            return false;
+        }
+        if (!state.dirty && currentTick < state.nextRefreshTick) {
+            return false;
+        }
+        state.lastReconcileTick = currentTick;
+        state.nextRefreshTick = currentTick + WORLD_REFRESH_INTERVAL;
+        state.dirty = false;
         return true;
     }
 
@@ -1109,15 +1152,22 @@ public final class ChannelSparkNetwork {
             return;
         }
 
-        // Take a stable snapshot because clear() and AE2 bridge creation can
-        // change world/entity state while the server is updating entities.
+        WorldState state = WORLD_STATES.get(world);
+        if (state == null) {
+            return;
+        }
+
+        // Keep a stable snapshot because clear() and AE2 bridge creation can
+        // change entity state while the server is updating the network.
         List<EntityChannelSpark> sparks = new ArrayList<>();
-        for (Entity entity : new ArrayList<>(world.loadedEntityList)) {
-            if (entity instanceof EntityChannelSpark) {
-                EntityChannelSpark spark = (EntityChannelSpark) entity;
-                if (!spark.isDead && spark.world == world) {
-                    sparks.add(spark);
-                }
+        java.util.Iterator<EntityChannelSpark> sparkIterator =
+                state.sparks.iterator();
+        while (sparkIterator.hasNext()) {
+            EntityChannelSpark spark = sparkIterator.next();
+            if (spark == null || spark.isDead || spark.world != world) {
+                sparkIterator.remove();
+            } else {
+                sparks.add(spark);
             }
         }
 
