@@ -828,8 +828,13 @@ public final class ChannelSparkNetwork {
                 continue;
             }
             IGridNode candidateNode = getSparkEndpointNode(candidate);
+            // AE2 merges the endpoint grids into one graph when the native
+            // P2P connection is created.  Comparing grid identity here would
+            // therefore remove every valid bridge on the next reconciliation
+            // tick.  Only the exact same node is the source itself; distinct
+            // nodes must remain eligible even after a P2P edge exists.
             if (candidateNode == null
-                    || (sourceNode != null && sameGrid(sourceNode, candidateNode))) {
+                    || (sourceNode != null && sourceNode == candidateNode)) {
                 continue;
             }
             // Entity UUID is the endpoint identity. Do not collapse separate
