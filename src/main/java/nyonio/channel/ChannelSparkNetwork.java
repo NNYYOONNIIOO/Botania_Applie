@@ -401,6 +401,24 @@ public final class ChannelSparkNetwork {
             return controllerOuterProxies.get(index);
         }
 
+        private AEPartLocation getControllerFaceForNextPair() {
+            if (controllerFaces.isEmpty()) {
+                return null;
+            }
+            int index = nextControllerFace % controllerFaces.size();
+            return controllerFaces.get(index);
+        }
+
+        private AENetworkProxy createDedicatedControllerOuterProxy(
+                String suffix, AEPartLocation face) {
+            if (face == null || anchor == null || anchor.getGridBlock() == null
+                    || anchor.getGridBlock().getLocation() == null) {
+                return null;
+            }
+            return createControllerOuterProxy(suffix + "_" + nextControllerFace,
+                    face, anchor.getGridBlock().getLocation());
+        }
+
 
 
         /**
@@ -1427,11 +1445,11 @@ if (network == null || network.isEmpty()) {
             return build;
         }
 
-        AENetworkProxy inputOuter = mainProxy.acquireControllerOuterProxy();
-        if (inputOuter == null || inputOuter.getNode() == null) {
-            return build;
-        }
-
+        // Each main-spark/channel-spark pair owns one independent source
+        // input and one independent destination outer endpoint. Do not rotate
+        // through a shared six-face pool: sharing one source node makes AE2
+        // collapse the branches into one path and all remote channels appear
+        // red when any branch is rebuilt.
         BridgeProxy secondProxy = null;
         try {
             secondProxy = new BridgeProxy(secondEndpoint, second.world,
@@ -1441,25 +1459,22 @@ if (network == null || network.isEmpty()) {
                 return build;
             }
 
-            // Exactly one native-style P2P outer edge belongs to this main /
-            // channel-spark pair. The six source inputs are reusable and do
-            // not multiply this relationship.
+            AENetworkProxy inputOuter = mainProxy.createDedicatedControllerOuterProxy(
+                    first.getUniqueID().toString(), mainProxy.getControllerFaceForNextPair());
+            if (inputOuter == null || inputOuter.getNode() == null) {
+                secondProxy.destroy();
+                return build;
+            }
+
             IGridConnection connection = createP2PGridConnection(
                     inputOuter.getNode(), secondProxy.outerNode());
             if (connection == null) {
                 secondProxy.destroy();
                 return build;
             }
-            mainProxy.wakeControllerChannelInputs();
-            try {
-                secondProxy.innerProxy.getTick().wakeDevice(secondProxy.innerNode());
-                AENetworkProxy channelProxy = mainProxy.getControllerChannelProxyForNode(
-                        inputOuter.getNode());
-                if (channelProxy != null && channelProxy.getNode() != null) {
-                    channelProxy.getTick().wakeDevice(channelProxy.getNode());
-                }
-            } catch (Throwable ignored) {
-            }
+            wakeProxy(inputOuter);
+            wakeProxy(mainProxy.getControllerChannelProxyForNode(inputOuter.getNode()));
+            wakeProxy(secondProxy.innerProxy);
             build.connections.add(connection);
             build.proxies.add(secondProxy);
             return build;
@@ -1468,9 +1483,19 @@ if (network == null || network.isEmpty()) {
             if (secondProxy != null) {
                 secondProxy.destroy();
             }
-            logConnectionFailure("AE2 channel spark P2P bridge", inputOuter.getNode(),
+            logConnectionFailure("AE2 channel spark P2P bridge", null,
                     secondEndpoint.node, error);
             return new BridgeBuild();
+        }
+    }
+
+    private static void wakeProxy(AENetworkProxy proxy) {
+        if (proxy == null || proxy.getNode() == null) {
+            return;
+        }
+        try {
+            proxy.getTick().wakeDevice(proxy.getNode());
+        } catch (Throwable ignored) {
         }
     }
 
