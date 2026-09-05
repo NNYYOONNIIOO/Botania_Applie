@@ -84,6 +84,73 @@ public final class ChannelSparkNetwork {
         private boolean dirty = true;
     }
 
+    /**
+     * Spatial index used during one reconciliation pass. The old implementation
+     * asked World for an AABB query once per spark; that repeats the world's
+     * entity-index lookup for every spark. Buckets are sized to the transfer
+     * radius, so a query only needs the 27 neighbouring buckets.
+     */
+    private static final class SparkSpatialIndex {
+        private final int bucketSize;
+        private final Map<BlockPos, List<EntityChannelSpark>> buckets =
+                new HashMap<>();
+
+        private SparkSpatialIndex(int bucketSize) {
+            this.bucketSize = Math.max(1, bucketSize);
+        }
+
+        private void add(EntityChannelSpark spark) {
+            if (spark == null) {
+                return;
+            }
+            BlockPos key = bucketKey(spark, bucketSize);
+            List<EntityChannelSpark> bucket = buckets.get(key);
+            if (bucket == null) {
+                bucket = new ArrayList<>();
+                buckets.put(key, bucket);
+            }
+            bucket.add(spark);
+        }
+
+        private List<EntityChannelSpark> findNearby(EntityChannelSpark source,
+                                                    double maxDistance) {
+            List<EntityChannelSpark> nearby = new ArrayList<>();
+            if (source == null) {
+                return nearby;
+            }
+            BlockPos sourceBucket = bucketKey(source, bucketSize);
+            int bucketX = sourceBucket.getX();
+            int bucketY = sourceBucket.getY();
+            int bucketZ = sourceBucket.getZ();
+            for (int x = bucketX - 1; x <= bucketX + 1; x++) {
+                for (int y = bucketY - 1; y <= bucketY + 1; y++) {
+                    for (int z = bucketZ - 1; z <= bucketZ + 1; z++) {
+                        List<EntityChannelSpark> bucket = buckets.get(
+                                new BlockPos(x, y, z));
+                        if (bucket == null) {
+                            continue;
+                        }
+                        for (EntityChannelSpark candidate : bucket) {
+                            if (candidate != null && candidate != source
+                                    && source.getDistanceSq(candidate) <= maxDistance) {
+                                nearby.add(candidate);
+                            }
+                        }
+                    }
+                }
+            }
+            return nearby;
+        }
+
+        private static BlockPos bucketKey(EntityChannelSpark spark,
+                                          int bucketSize) {
+            return new BlockPos(
+                    (int) Math.floor(spark.posX / (double) bucketSize),
+                    (int) Math.floor(spark.posY / (double) bucketSize),
+                    (int) Math.floor(spark.posZ / (double) bucketSize));
+        }
+    }
+
     public static void registerSpark(EntityChannelSpark spark) {
         if (spark == null || spark.world == null || spark.world.isRemote) {
             return;
@@ -1173,6 +1240,10 @@ public final class ChannelSparkNetwork {
 
         int radius = ChannelSparkConfig.getTransferRadius();
         double maxDistance = (double) radius * (double) radius;
+        SparkSpatialIndex spatialIndex = new SparkSpatialIndex(radius);
+        for (EntityChannelSpark spark : sparks) {
+            spatialIndex.add(spark);
+        }
 
         // First make the local relay graph symmetric for every spark. The
         // second pass below then walks each connected component exactly once.
@@ -1182,11 +1253,8 @@ public final class ChannelSparkNetwork {
                 continue;
             }
             removeInvalidLinks(spark);
-            AxisAlignedBB search = new AxisAlignedBB(
-                    spark.posX - radius, spark.posY - radius, spark.posZ - radius,
-                    spark.posX + radius, spark.posY + radius, spark.posZ + radius);
-            List<EntityChannelSpark> nearby = world.getEntitiesWithinAABB(
-                    EntityChannelSpark.class, search);
+            List<EntityChannelSpark> nearby = spatialIndex.findNearby(
+                    spark, maxDistance);
             reconcileNearbyLogicalLinks(spark, nearby, maxDistance);
         }
 
@@ -1343,9 +1411,8 @@ public final class ChannelSparkNetwork {
             BridgeKey key = new BridgeKey(main.getUniqueID(), other.getUniqueID());
             BridgeRecord existing = AE_BRIDGES.get(key);
             if (existing != null) {
-                // Connection liveness is checked by cleanupBridgeRecords on a
-                // lower-frequency health pass. Repeating getConnections() for
-                // every endpoint on every spark tick is needlessly expensive.
+                // Validate only the bridge being reconciled. World-level
+                // dispatch keeps this out of the per-entity update path.
                 if (existing.expectedConnections == existing.connections.size()
                         && existing.connections.size() > 0
                         && areConnectionsAlive(existing.connections)) {
