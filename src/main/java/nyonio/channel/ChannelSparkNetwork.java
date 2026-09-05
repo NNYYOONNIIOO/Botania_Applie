@@ -382,8 +382,13 @@ public final class ChannelSparkNetwork {
                 return true;
             }
             try {
+                // TileController creates its physical connections from the
+                // adjacent node toward the controller.  Keep the same
+                // orientation here: TileController is CANNOT_CARRY, so
+                // creating controller -> proxy makes the channel path stop at
+                // the connection and the synthetic channel never activates.
                 IGridConnection connection = GridConnection.create(
-                        controller, proxy.getNode(), face);
+                        proxy.getNode(), controller, face.getOpposite());
                 if (connection == null) {
                     return false;
                 }
