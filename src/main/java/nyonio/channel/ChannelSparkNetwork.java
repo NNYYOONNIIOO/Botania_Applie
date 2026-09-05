@@ -1530,19 +1530,11 @@ if (network == null || network.isEmpty()) {
             return false;
         }
         try {
-            // The local node consumes the channel on the attached AE network.
-            // Cable endpoints require the real physical side; INTERNAL makes
-            // AE2 treat the synthetic proxy as an invalid cable connection.
-            AEPartLocation attachmentDirection = isCableNode(endpoint.node)
-                    ? proxy.attachmentDirection : AEPartLocation.INTERNAL;
-            IGridConnection localConnection = GridConnection.create(
-                    endpoint.node, proxy.innerNode(), attachmentDirection);
-            if (localConnection == null) {
-                return false;
-            }
-            proxy.attachments.add(localConnection);
-            repathAfterConnection(endpoint.node, proxy.innerNode());
-
+            // An output exposes the destination network through its outer
+            // P2P node. Its inner REQUIRE_CHANNEL node belongs only to the
+            // local tunnel implementation and must not be attached to the
+            // destination network, otherwise every output consumes a channel
+            // and the remote cable remains red.
             // The outer proxy normally discovers the endpoint through its
             // DOWN side. If a grid implementation does not rescan the
             // synthetic host, attach it using the endpoint's real face so
