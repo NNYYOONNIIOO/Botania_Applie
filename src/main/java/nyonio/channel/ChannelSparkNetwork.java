@@ -344,6 +344,12 @@ public final class ChannelSparkNetwork {
             if (hasDirectConnection(controller, proxy.getNode())) {
                 return true;
             }
+            // A world-accessible outer proxy may already have been discovered
+            // by AE2. Reuse that grid membership instead of creating a second
+            // edge on the same controller face.
+            if (sameGrid(controller, proxy.getNode())) {
+                return true;
+            }
             try {
                 IGridConnection connection = GridConnection.create(
                         controller, proxy.getNode(), face);
@@ -438,16 +444,19 @@ public final class ChannelSparkNetwork {
                 controllerChannelProxies.add(channelProxy);
                 controllerOuterProxies.add(outerProxy);
                 controllerFaces.add(face);
-                // Match PartP2PTunnelME: the local input proxy consumes a
-                // controller channel; the outer proxy remains an isolated
-                // dense P2P endpoint and is connected only to the remote outer
-                // proxy by AEApi.grid().createGridConnection(). Its
-                // world-accessible host discovers the controller side itself.
-                if (!ensureControllerFaceConnection(controller, channelProxy, face)) {
+                // Match PartP2PTunnelME: the channel proxy consumes a
+                // controller channel and the outer proxy is the dense P2P
+                // endpoint. The outer proxy normally joins through its
+                // world-accessible host; ensureControllerFaceConnection also
+                // supplies a same-face fallback when AE2 does not discover the
+                // synthetic host automatically.
+                if (!ensureControllerFaceConnection(controller, channelProxy, face)
+                        || !ensureControllerFaceConnection(controller, outerProxy, face)) {
                     destroyControllerInputs();
                     return false;
                 }
                 repathAfterConnection(controller, channelProxy.getNode());
+                repathAfterConnection(controller, outerProxy.getNode());
             }
             return !controllerChannelProxies.isEmpty();
         }
@@ -1428,6 +1437,10 @@ if (network == null || network.isEmpty()) {
                 return build;
             }
             mainProxy.wakeControllerChannelInputs();
+            try {
+                secondProxy.innerProxy.getTick().wakeDevice(secondProxy.innerNode());
+            } catch (Throwable ignored) {
+            }
             build.connections.add(connection);
             build.proxies.add(secondProxy);
             return build;
