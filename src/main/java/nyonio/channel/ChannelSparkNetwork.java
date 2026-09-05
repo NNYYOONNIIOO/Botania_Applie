@@ -1181,18 +1181,6 @@ public final class ChannelSparkNetwork {
         }
     }
 
-    /**
-     * Compatibility entry point for older integrations. EntityChannelSpark
-     * no longer calls this from onUpdate; the world event above owns the
-     * reconciliation schedule.
-     */
-    public static void tick(EntityChannelSpark spark) {
-        if (spark != null && spark.world != null && !spark.world.isRemote
-                && shouldReconcileWorld(spark.world)) {
-            reconcileWorld(spark.world);
-        }
-    }
-
     private static boolean shouldReconcileWorld(World world) {
         if (world == null) {
             return false;
