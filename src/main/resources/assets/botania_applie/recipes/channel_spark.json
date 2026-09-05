@@ -1,0 +1,10 @@
+{
+    "type": "minecraft:crafting_shapeless",
+    "ingredients": [
+        { "item": "botania:corporeaspark" },
+        { "item": "appliedenergistics2:part", "data": 460 }
+    ],
+    "result": {
+        "item": "botania_applie:channel_spark"
+    }
+}
