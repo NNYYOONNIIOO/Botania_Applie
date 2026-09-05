@@ -1528,7 +1528,7 @@ if (network == null || network.isEmpty()) {
             EntityChannelSpark first, EntityChannelSpark second) {
         return findBridgeEndpoints(first.world, first.getTargetPos()).isEmpty()
                 || findBridgeEndpoints(second.world, second.getTargetPos()).isEmpty()
-                ? 0 : 2;
+                ? 0 : 1;
     }
 
 private static BridgeBuild createGridConnectionsIfPossible(
