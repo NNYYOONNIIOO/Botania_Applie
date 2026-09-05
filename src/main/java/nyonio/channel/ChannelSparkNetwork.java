@@ -1524,10 +1524,10 @@ private static BridgeBuild createGridConnectionsIfPossible(
             return build;
         }
 
-        // Native ME P2P has one channel-consuming input proxy paired with one
-        // dense outer proxy. Reuse the six stable controller-face pairs in
-        // +X,+Y,+Z,-X,-Y,-Z order; one input may have multiple outputs, just as
-        // one native ME P2P input can serve multiple output tunnels.
+        // Every output consumes one controller-side channel proxy in the
+        // deterministic +X,+Y,+Z,-X,-Y,-Z order. The channel edge is built
+        // first so AE2 allocates a real compressed-channel route between the
+        // two network-facing REQUIRE_CHANNEL nodes.
         AENetworkProxy inputOuter = mainProxy.acquireControllerOuterProxy();
         AENetworkProxy inputChannel = inputOuter == null
                 ? null : mainProxy.getControllerChannelProxyForNode(
@@ -1546,11 +1546,6 @@ private static BridgeBuild createGridConnectionsIfPossible(
                 return build;
             }
 
-            // Establish the channel path before joining the two outer
-            // topology nodes. This lets AE2 allocate the compressed route
-            // while the two REQUIRE_CHANNEL endpoints still belong to their
-            // original networks instead of treating the second edge as an
-            // intra-grid cycle.
             IGridConnection channelConnection = createP2PGridConnection(
                     inputChannel.getNode(), secondProxy.innerNode());
             if (channelConnection == null) {
@@ -1558,11 +1553,12 @@ private static BridgeBuild createGridConnectionsIfPossible(
                 return build;
             }
 
-            // The outer edge supplies the visible P2P topology and remains a
-            // separate dense branch from the channel edge above.
-            IGridConnection connection = createP2PGridConnection(
+            // Keep a separate outer edge for the P2P topology. It is not used
+            // as the channel route; the channel edge above is what supplies
+            // channels to the remote network.
+            IGridConnection outerConnection = createP2PGridConnection(
                     inputOuter.getNode(), secondProxy.outerNode());
-            if (connection == null) {
+            if (outerConnection == null) {
                 destroyConnection(channelConnection);
                 secondProxy.destroy();
                 return build;
@@ -1572,8 +1568,8 @@ private static BridgeBuild createGridConnectionsIfPossible(
             wakeProxy(inputChannel);
             mainProxy.wakeControllerChannelInputs();
             wakeProxy(secondProxy.innerProxy);
-            build.connections.add(connection);
             build.connections.add(channelConnection);
+            build.connections.add(outerConnection);
             build.proxies.add(secondProxy);
             return build;
         } catch (Throwable error) {
@@ -1581,11 +1577,12 @@ private static BridgeBuild createGridConnectionsIfPossible(
             if (secondProxy != null) {
                 secondProxy.destroy();
             }
-            logConnectionFailure("AE2 channel spark P2P bridge", inputOuter.getNode(),
-                    secondEndpoint.node, error);
+            logConnectionFailure("AE2 channel spark P2P bridge",
+                    inputOuter.getNode(), secondEndpoint.node, error);
             return new BridgeBuild();
         }
     }
+
 
     private static void wakeProxy(AENetworkProxy proxy) {
         if (proxy == null || proxy.getNode() == null) {
