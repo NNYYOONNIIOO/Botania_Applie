@@ -1431,7 +1431,7 @@ if (network == null || network.isEmpty()) {
                 ? 0 : 1;
     }
 
-    private static BridgeBuild createGridConnectionsIfPossible(
+private static BridgeBuild createGridConnectionsIfPossible(
             EntityChannelSpark first, EntityChannelSpark second,
             BridgeProxy mainProxy) {
         BridgeBuild build = new BridgeBuild();
@@ -1445,23 +1445,20 @@ if (network == null || network.isEmpty()) {
             return build;
         }
 
-        // Each main-spark/channel-spark pair owns one independent source
-        // input and one independent destination outer endpoint. Do not rotate
-        // through a shared six-face pool: sharing one source node makes AE2
-        // collapse the branches into one path and all remote channels appear
-        // red when any branch is rebuilt.
+        // Native ME P2P has one channel-consuming input proxy paired with one
+        // dense outer proxy. Reuse the six stable controller-face pairs in
+        // +X,+Y,+Z,-X,-Y,-Z order; one input may have multiple outputs, just as
+        // one native ME P2P input can serve multiple output tunnels.
+        AENetworkProxy inputOuter = mainProxy.acquireControllerOuterProxy();
+        if (inputOuter == null || inputOuter.getNode() == null) {
+            return build;
+        }
+
         BridgeProxy secondProxy = null;
         try {
             secondProxy = new BridgeProxy(secondEndpoint, second.world,
                     second.getTargetPos(), second);
             if (!attachOutputProxy(secondProxy, secondEndpoint)) {
-                secondProxy.destroy();
-                return build;
-            }
-
-            AENetworkProxy inputOuter = mainProxy.createDedicatedControllerOuterProxy(
-                    first.getUniqueID().toString(), mainProxy.getControllerFaceForNextPair());
-            if (inputOuter == null || inputOuter.getNode() == null) {
                 secondProxy.destroy();
                 return build;
             }
@@ -1472,8 +1469,10 @@ if (network == null || network.isEmpty()) {
                 secondProxy.destroy();
                 return build;
             }
+
             wakeProxy(inputOuter);
-            wakeProxy(mainProxy.getControllerChannelProxyForNode(inputOuter.getNode()));
+            wakeProxy(mainProxy.getControllerChannelProxyForNode(
+                    inputOuter.getNode()));
             wakeProxy(secondProxy.innerProxy);
             build.connections.add(connection);
             build.proxies.add(secondProxy);
@@ -1483,7 +1482,7 @@ if (network == null || network.isEmpty()) {
             if (secondProxy != null) {
                 secondProxy.destroy();
             }
-            logConnectionFailure("AE2 channel spark P2P bridge", null,
+            logConnectionFailure("AE2 channel spark P2P bridge", inputOuter.getNode(),
                     secondEndpoint.node, error);
             return new BridgeBuild();
         }
@@ -1547,7 +1546,7 @@ if (network == null || network.isEmpty()) {
         }
     }
 
-    private static boolean attachOutputProxy(BridgeProxy proxy,
+private static boolean attachOutputProxy(BridgeProxy proxy,
                                               BridgeEndpoint endpoint) {
         if (proxy == null || endpoint == null || endpoint.node == null
                 || proxy.innerNode() == null || proxy.outerNode() == null
@@ -1555,37 +1554,53 @@ if (network == null || network.isEmpty()) {
             return false;
         }
         try {
-            // An output exposes the destination network through its outer
-            // P2P node. Its inner REQUIRE_CHANNEL node belongs only to the
-            // local tunnel implementation and must not be attached to the
-            // destination network, otherwise every output consumes a channel
-            // and the remote cable remains red.
-            // The outer proxy normally discovers the endpoint through its
-            // DOWN side. If a grid implementation does not rescan the
-            // synthetic host, attach it using the endpoint's real face so
-            // the P2P output still belongs to the destination network.
-            if (safeGrid(proxy.outerNode()) != safeGrid(endpoint.node)) {
+            // Match the regular proxy of a native ME P2P output. This node
+            // consumes the destination network's channel; omitting it leaves
+            // the P2P outer edge visible but does not make the destination path
+            // usable. Make the connection idempotent because AE2 may discover
+            // the synthetic node before this fallback runs.
+            AEPartLocation attachmentDirection = isCableNode(endpoint.node)
+                    ? proxy.attachmentDirection : AEPartLocation.INTERNAL;
+            IGridConnection localConnection = findDirectGridConnection(
+                    endpoint.node, proxy.innerNode());
+            if (localConnection == null) {
+                localConnection = GridConnection.create(
+                        endpoint.node, proxy.innerNode(), attachmentDirection);
+            }
+            if (localConnection == null) {
+                return false;
+            }
+            if (!proxy.attachments.contains(localConnection)) {
+                proxy.attachments.add(localConnection);
+            }
+            repathAfterConnection(endpoint.node, proxy.innerNode());
+
+            // The outer proxy normally discovers the endpoint through its DOWN
+            // side. If the synthetic world host was not discovered, attach it
+            // through the endpoint's real face so the P2P output belongs to the
+            // destination network.
+            if (!sameGrid(proxy.outerNode(), endpoint.node)) {
                 AEPartLocation face = isCableNode(endpoint.node)
                         ? proxy.attachmentDirection : endpoint.direction;
                 if (face == null) {
                     return false;
                 }
-                try {
-                    IGridConnection outerConnection = GridConnection.create(
+                IGridConnection outerConnection = findDirectGridConnection(
+                        endpoint.node, proxy.outerNode());
+                if (outerConnection == null) {
+                    outerConnection = GridConnection.create(
                             endpoint.node, proxy.outerNode(), face);
-                    if (outerConnection == null) {
-                        return false;
-                    }
-                    proxy.attachments.add(outerConnection);
-                    repathAfterConnection(endpoint.node, proxy.outerNode());
-                } catch (Throwable error) {
-                    logConnectionFailure(
-                            "channel spark output outer attachment",
-                            endpoint.node, proxy.outerNode(), error);
+                }
+                if (outerConnection == null) {
                     return false;
                 }
+                if (!proxy.attachments.contains(outerConnection)) {
+                    proxy.attachments.add(outerConnection);
+                }
+                repathAfterConnection(endpoint.node, proxy.outerNode());
             }
-            return safeGrid(proxy.outerNode()) == safeGrid(endpoint.node);
+            return sameGrid(proxy.innerNode(), endpoint.node)
+                    && sameGrid(proxy.outerNode(), endpoint.node);
         } catch (Throwable error) {
             logConnectionFailure("AE2 channel spark output endpoint attachment",
                     endpoint.node, proxy.innerNode(), error);
