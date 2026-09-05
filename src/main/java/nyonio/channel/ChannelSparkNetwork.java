@@ -58,7 +58,7 @@ public final class ChannelSparkNetwork {
                     new WeakHashMap<IGridConnection, Boolean>()));
     private static final Map<BridgeKey, BridgeRecord> AE_BRIDGES = new HashMap<>();
     private static final Map<UUID, BridgeProxy> MAIN_PROXIES = new HashMap<>();
-    private static final Map<EntityChannelSpark, Long> LAST_LOGICAL_LINK_RECONCILIATION_TICKS =
+    private static final Map<World, Long> LAST_WORLD_RECONCILIATION_TICKS =
             new WeakHashMap<>();
 
     /** Deterministic AE2 controller-face order: +X,+Y,+Z,-X,-Y,-Z. */
@@ -1069,42 +1069,75 @@ public final class ChannelSparkNetwork {
         if (spark == null || spark.isDead || spark.world == null || spark.world.isRemote) {
             return;
         }
-        if (!isPrimaryInBlock(spark)) {
-            clear(spark);
-            return;
-        }
-        boolean linksDue = shouldReconcileLogicalLinks(spark);
-        if (linksDue) {
-            removeInvalidLinks(spark);
-            int radius = ChannelSparkConfig.getTransferRadius();
-            double maxDistance = (double) radius * (double) radius;
-            AxisAlignedBB search = new AxisAlignedBB(
-                    spark.posX - radius, spark.posY - radius, spark.posZ - radius,
-                    spark.posX + radius, spark.posY + radius, spark.posZ + radius);
-            List<EntityChannelSpark> nearby = spark.world.getEntitiesWithinAABB(
-                    EntityChannelSpark.class, search);
-            // Reconcile physical relay links independently of which spark is
-            // currently ticking. This permits main -> spark1 -> spark2 chains,
-            // with every hop constrained by the configured transfer radius.
-            reconcileNearbyLogicalLinks(spark, nearby, maxDistance);
-        }
-        if (linksDue) {
-            reconcileAeBridges(spark);
+        if (shouldReconcileWorld(spark.world)) {
+            reconcileWorld(spark.world);
         }
     }
 
-    private static boolean shouldReconcileLogicalLinks(EntityChannelSpark spark) {
-        if (spark == null || spark.world == null) {
+    private static boolean shouldReconcileWorld(World world) {
+        if (world == null) {
             return false;
         }
-        long currentTick = spark.world.getTotalWorldTime();
-        Long lastTick = LAST_LOGICAL_LINK_RECONCILIATION_TICKS.get(spark);
+        long currentTick = world.getTotalWorldTime();
+        Long lastTick = LAST_WORLD_RECONCILIATION_TICKS.get(world);
         if (lastTick != null && currentTick >= lastTick
                 && currentTick - lastTick < LOGICAL_LINK_RECONCILE_INTERVAL) {
             return false;
         }
-        LAST_LOGICAL_LINK_RECONCILIATION_TICKS.put(spark, currentTick);
+        LAST_WORLD_RECONCILIATION_TICKS.put(world, currentTick);
         return true;
+    }
+
+    private static void reconcileWorld(World world) {
+        if (world == null || world.isRemote) {
+            return;
+        }
+
+        // Take a stable snapshot because clear() and AE2 bridge creation can
+        // change world/entity state while the server is updating entities.
+        List<EntityChannelSpark> sparks = new ArrayList<>();
+        for (Entity entity : new ArrayList<>(world.loadedEntityList)) {
+            if (entity instanceof EntityChannelSpark) {
+                EntityChannelSpark spark = (EntityChannelSpark) entity;
+                if (!spark.isDead && spark.world == world) {
+                    sparks.add(spark);
+                }
+            }
+        }
+
+        int radius = ChannelSparkConfig.getTransferRadius();
+        double maxDistance = (double) radius * (double) radius;
+
+        // First make the local relay graph symmetric for every spark. The
+        // second pass below then walks each connected component exactly once.
+        for (EntityChannelSpark spark : sparks) {
+            if (!isPrimaryInBlock(spark)) {
+                clear(spark);
+                continue;
+            }
+            removeInvalidLinks(spark);
+            AxisAlignedBB search = new AxisAlignedBB(
+                    spark.posX - radius, spark.posY - radius, spark.posZ - radius,
+                    spark.posX + radius, spark.posY + radius, spark.posZ + radius);
+            List<EntityChannelSpark> nearby = world.getEntitiesWithinAABB(
+                    EntityChannelSpark.class, search);
+            reconcileNearbyLogicalLinks(spark, nearby, maxDistance);
+        }
+
+        Set<UUID> visited = new HashSet<>();
+        for (EntityChannelSpark spark : sparks) {
+            if (spark.isDead || !isPrimaryInBlock(spark)
+                    || !visited.add(spark.getUniqueID())) {
+                continue;
+            }
+            List<EntityChannelSpark> network = collectLogicalNetwork(spark);
+            for (EntityChannelSpark member : network) {
+                if (member != null) {
+                    visited.add(member.getUniqueID());
+                }
+            }
+            reconcileAeBridges(spark, network);
+        }
     }
 
     private static void reconcileNearbyLogicalLinks(
@@ -1201,7 +1234,11 @@ public final class ChannelSparkNetwork {
     }
 
     private static void reconcileAeBridges(EntityChannelSpark source) {
-        List<EntityChannelSpark> network = collectLogicalNetwork(source);
+        reconcileAeBridges(source, collectLogicalNetwork(source));
+    }
+
+    private static void reconcileAeBridges(EntityChannelSpark source,
+                                           List<EntityChannelSpark> network) {
         if (network.isEmpty()) {
             return;
         }
