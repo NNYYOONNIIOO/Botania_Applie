@@ -282,7 +282,8 @@ public final class ChannelSparkNetwork {
             // the controller-side input and the remote spark.  It must allow
             // compressed channels through; otherwise the visible bridge is
             // present but the remote network receives no channel.
-            this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY);
+            this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY,
+                    GridFlags.CANNOT_CARRY_COMPRESSED);
             this.outerProxy.setValidSides(endpoint != null && endpoint.controllerFace
                     ? EnumSet.noneOf(EnumFacing.class)
                     : EnumSet.of(EnumFacing.DOWN));
@@ -347,20 +348,15 @@ public final class ChannelSparkNetwork {
             DimensionalCoord location = new DimensionalCoord(
                     controllerLocation.getWorld(), position);
             EnumSet<EnumFacing> sides = EnumSet.of(outward.getOpposite());
-            ProxyHost host = new ProxyHost(this.anchor, location,
-                    EnumSet.noneOf(EnumFacing.class));
+            ProxyHost host = new ProxyHost(this.anchor, location, sides);
             AENetworkProxy proxy = new AENetworkProxy(host,
                     "botania_applie_channel_spark_outer_" + suffix,
-                    ItemStack.EMPTY, false);
+                    ItemStack.EMPTY, true);
             host.setProxy(proxy);
-            // This outer proxy participates in the wireless channel path, so
-            // it must be a dense carrier rather than a compressed-channel
-            // barrier.  The bridge connection itself still has the configured
-            // 32-channel capacity through createP2PGridConnection().
-            // The controller-side synthetic outer node is also part of the
-            // wireless channel path and must not block compressed channels.
-            proxy.setFlags(GridFlags.DENSE_CAPACITY);
-            proxy.setValidSides(EnumSet.noneOf(EnumFacing.class));
+            // Match AE2's native ME P2P outer endpoint.
+            proxy.setFlags(GridFlags.DENSE_CAPACITY,
+                    GridFlags.CANNOT_CARRY_COMPRESSED);
+            proxy.setValidSides(sides);
             proxy.onReady();
             return proxy;
         }
@@ -388,7 +384,7 @@ public final class ChannelSparkNetwork {
                 // creating controller -> proxy makes the channel path stop at
                 // the connection and the synthetic channel never activates.
                 IGridConnection connection = GridConnection.create(
-                        proxy.getNode(), controller, face.getOpposite());
+                        controller, proxy.getNode(), face);
                 if (connection == null) {
                     return false;
                 }
@@ -550,8 +546,8 @@ public final class ChannelSparkNetwork {
                 // supplies a same-face fallback when AE2 does not discover the
                 // synthetic host automatically.
                 if (!ensureControllerFaceConnection(controller, channelProxy, face)
-                        || !ensureControllerBranchConnection(channelProxy,
-                        outerProxy)) {
+                        || !ensureControllerFaceConnection(controller, outerProxy,
+                        face)) {
                     destroyControllerInputs();
                     return false;
                 }
@@ -578,7 +574,8 @@ public final class ChannelSparkNetwork {
                         || safeGrid(channelNode) != controllerGrid
                         || safeGrid(outerNode) != controllerGrid
                         || !hasDirectConnection(controller, channelNode)
-                        || !hasDirectConnection(channelNode, outerNode)) {
+                        || (!hasDirectConnection(controller, outerNode)
+                        && !sameGrid(controller, outerNode))) {
                     return false;
                 }
             }
