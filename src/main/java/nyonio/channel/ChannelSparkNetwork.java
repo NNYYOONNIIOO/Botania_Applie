@@ -56,6 +56,13 @@ public final class ChannelSparkNetwork {
                     new WeakHashMap<IGridConnection, Boolean>()));
     private static final Map<BridgeKey, BridgeRecord> AE_BRIDGES = new HashMap<>();
     private static final Map<UUID, BridgeProxy> MAIN_PROXIES = new HashMap<>();
+    /**
+     * Bridge cleanup is global to a world tick, not to an individual spark.
+     * EntityChannelSpark ticks once per entity, so without this guard the same
+     * bridge table is scanned once for every loaded spark.
+     */
+    private static final Map<World, Long> LAST_BRIDGE_CLEANUP_TICKS =
+            new WeakHashMap<>();
 
     /** Deterministic AE2 controller-face order: +X,+Y,+Z,-X,-Y,-Z. */
     private static final EnumFacing[] CHANNEL_DIRECTION_ORDER = {
@@ -1081,7 +1088,9 @@ public final class ChannelSparkNetwork {
         // currently ticking. This permits main -> spark1 -> spark2 chains,
         // with every hop constrained by the configured transfer radius.
         reconcileNearbyLogicalLinks(spark, nearby, maxDistance);
-        cleanupBridgeRecords();
+        if (shouldCleanupBridgeRecords(spark.world)) {
+            cleanupBridgeRecords(spark.world);
+        }
         reconcileAeBridges(spark);
     }
     private static void reconcileNearbyLogicalLinks(
@@ -1410,16 +1419,37 @@ if (network == null || network.isEmpty()) {
         return network;
     }
 
-    private static void cleanupBridgeRecords() {
+    private static boolean shouldCleanupBridgeRecords(World world) {
+        if (world == null) {
+            return false;
+        }
+        long currentTick = world.getTotalWorldTime();
+        Long lastTick = LAST_BRIDGE_CLEANUP_TICKS.get(world);
+        if (lastTick != null && lastTick.longValue() == currentTick) {
+            return false;
+        }
+        LAST_BRIDGE_CLEANUP_TICKS.put(world, currentTick);
+        return true;
+    }
+
+    private static void cleanupBridgeRecords(World world) {
+        // Several bridge records can belong to the same logical spark
+        // network. Cache each connected component so cleanup performs one BFS
+        // per component instead of one BFS per bridge record.
+        Map<UUID, Set<UUID>> logicalComponents = new HashMap<>();
         java.util.Iterator<Map.Entry<BridgeKey, BridgeRecord>> iterator =
                 AE_BRIDGES.entrySet().iterator();
         while (iterator.hasNext()) {
             BridgeRecord record = iterator.next().getValue();
+            if (!belongsToWorld(record, world)) {
+                continue;
+            }
             boolean valid = record.first != null && record.second != null
                     && !record.first.isDead && !record.second.isDead
                     && record.first.world == record.second.world
                     && isPrimaryInBlock(record.first) && isPrimaryInBlock(record.second)
-                    && areLogicallyConnected(record.first, record.second)
+                    && areLogicallyConnected(record.first, record.second,
+                    logicalComponents)
                     && areConnectionsAlive(record.connections);
             if (!valid) {
                 destroyBridge(record);
@@ -1428,14 +1458,34 @@ if (network == null || network.isEmpty()) {
         }
     }
 
+    private static boolean belongsToWorld(BridgeRecord record, World world) {
+        if (record == null || world == null) {
+            return true;
+        }
+        return (record.first != null && record.first.world == world)
+                || (record.second != null && record.second.world == world);
+    }
+
     private static boolean areLogicallyConnected(EntityChannelSpark first,
-                                                  EntityChannelSpark second) {
-        for (EntityChannelSpark candidate : collectLogicalNetwork(first)) {
-            if (candidate == second) {
-                return true;
+                                                  EntityChannelSpark second,
+                                                  Map<UUID, Set<UUID>> logicalComponents) {
+        if (first == null || second == null || logicalComponents == null) {
+            return false;
+        }
+        UUID firstId = first.getUniqueID();
+        Set<UUID> component = logicalComponents.get(firstId);
+        if (component == null) {
+            component = new HashSet<>();
+            for (EntityChannelSpark candidate : collectLogicalNetwork(first)) {
+                if (candidate != null) {
+                    component.add(candidate.getUniqueID());
+                }
+            }
+            for (UUID member : component) {
+                logicalComponents.put(member, component);
             }
         }
-        return false;
+        return component.contains(second.getUniqueID());
     }
 
     private static boolean areConnectionsAlive(List<IGridConnection> connections) {
