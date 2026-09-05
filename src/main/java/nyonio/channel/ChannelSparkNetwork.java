@@ -1204,8 +1204,8 @@ public final class ChannelSparkNetwork {
             BridgeKey key = new BridgeKey(main.getUniqueID(), other.getUniqueID());
             BridgeRecord existing = AE_BRIDGES.get(key);
             if (existing != null) {
-                if (existing.expectedConnections == 1
-                        && existing.connections.size() == 1
+                if (existing.expectedConnections == existing.connections.size()
+                        && existing.connections.size() > 0
                         && areConnectionsAlive(existing.connections)) {
                     continue;
                 }
@@ -1214,7 +1214,8 @@ public final class ChannelSparkNetwork {
             }
             BridgeBuild build = createGridConnectionsIfPossible(main, other, mainProxy);
             if (!build.isEmpty()) {
-                AE_BRIDGES.put(key, new BridgeRecord(main, other, build, 1));
+                AE_BRIDGES.put(key, new BridgeRecord(main, other, build,
+                        build.connections.size()));
             }
         }
     }
@@ -1504,7 +1505,7 @@ if (network == null || network.isEmpty()) {
             EntityChannelSpark first, EntityChannelSpark second) {
         return findBridgeEndpoints(first.world, first.getTargetPos()).isEmpty()
                 || findBridgeEndpoints(second.world, second.getTargetPos()).isEmpty()
-                ? 0 : 1;
+                ? 0 : 2;
     }
 
 private static BridgeBuild createGridConnectionsIfPossible(
