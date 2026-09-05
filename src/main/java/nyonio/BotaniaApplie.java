@@ -28,6 +28,7 @@ import nyonio.handler.ManaCardTickHandler;
 import nyonio.handler.ObedienceStickHandler;
 import nyonio.integration.wireless.WirelessManaItemsHandler;
 import nyonio.integration.top.TopIntegration;
+import nyonio.channel.ChannelSparkNetwork;
 import nyonio.item.ItemManaCard;
 import nyonio.item.ItemManaPacket;
 import nyonio.item.ItemManaStorageCell;
@@ -110,6 +111,7 @@ public class BotaniaApplie implements ILateMixinLoader
     public void preInit(FMLPreInitializationEvent event)
     {
         logger = event.getModLog();
+        MinecraftForge.EVENT_BUS.register(ChannelSparkNetwork.class);
         proxy.preInit(event);
 
         network = NetworkRegistry.INSTANCE.newSimpleChannel(MODID);

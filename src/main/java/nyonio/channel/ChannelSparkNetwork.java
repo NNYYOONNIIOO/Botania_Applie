@@ -23,6 +23,8 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.world.World;
+import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
 import nyonio.BotaniaApplie;
 import nyonio.ChannelSparkConfig;
 import nyonio.entity.EntityChannelSpark;
@@ -1065,11 +1067,25 @@ public final class ChannelSparkNetwork {
         }
     }
 
-    public static void tick(EntityChannelSpark spark) {
-        if (spark == null || spark.isDead || spark.world == null || spark.world.isRemote) {
+    @SubscribeEvent
+    public static void onWorldTick(TickEvent.WorldTickEvent event) {
+        if (event == null || event.phase != TickEvent.Phase.END
+                || event.world == null || event.world.isRemote) {
             return;
         }
-        if (shouldReconcileWorld(spark.world)) {
+        if (shouldReconcileWorld(event.world)) {
+            reconcileWorld(event.world);
+        }
+    }
+
+    /**
+     * Compatibility entry point for older integrations. EntityChannelSpark
+     * no longer calls this from onUpdate; the world event above owns the
+     * reconciliation schedule.
+     */
+    public static void tick(EntityChannelSpark spark) {
+        if (spark != null && spark.world != null && !spark.world.isRemote
+                && shouldReconcileWorld(spark.world)) {
             reconcileWorld(spark.world);
         }
     }

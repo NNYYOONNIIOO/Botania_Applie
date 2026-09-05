@@ -119,9 +119,6 @@ public class EntityChannelSpark extends Entity {
     @Override
     public void onUpdate() {
         super.onUpdate();
-        if (!world.isRemote) {
-            ChannelSparkNetwork.tick(this);
-        }
     }
 
     @Override
