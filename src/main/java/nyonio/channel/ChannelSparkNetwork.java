@@ -51,14 +51,11 @@ import java.util.WeakHashMap;
  * search/tick.
  */
 public final class ChannelSparkNetwork {
-    private static final Map<IGridConnection, Integer> CHANNEL_CAPACITIES =
-            Collections.synchronizedMap(new WeakHashMap<IGridConnection, Integer>());
     private static final Set<IGridConnection> WIRELESS_CONNECTIONS =
             Collections.synchronizedSet(Collections.newSetFromMap(
                     new WeakHashMap<IGridConnection, Boolean>()));
     private static final Map<BridgeKey, BridgeRecord> AE_BRIDGES = new HashMap<>();
     private static final Map<UUID, BridgeProxy> MAIN_PROXIES = new HashMap<>();
-    private static final ThreadLocal<Integer> PENDING_CHANNEL_CAPACITY = new ThreadLocal<>();
 
     /** Deterministic AE2 controller-face order: +X,+Y,+Z,-X,-Y,-Z. */
     private static final EnumFacing[] CHANNEL_DIRECTION_ORDER = {
@@ -69,20 +66,13 @@ public final class ChannelSparkNetwork {
     private ChannelSparkNetwork() {
     }
 
-    public static Integer getCapacity(IGridConnection connection) {
-        Integer capacity = connection == null ? null : CHANNEL_CAPACITIES.get(connection);
-        return capacity == null ? PENDING_CHANNEL_CAPACITY.get() : capacity;
-    }
-
     public static boolean isWirelessConnection(IGridConnection connection) {
         return connection != null && WIRELESS_CONNECTIONS.contains(connection);
     }
 
     private static void registerConnection(Object connection) {
         if (connection instanceof IGridConnection) {
-            IGridConnection gridConnection = (IGridConnection) connection;
-            CHANNEL_CAPACITIES.put(gridConnection, ChannelSparkConfig.getChannelCapacity());
-            WIRELESS_CONNECTIONS.add(gridConnection);
+            WIRELESS_CONNECTIONS.add((IGridConnection) connection);
         }
     }
 
@@ -1796,7 +1786,6 @@ private static boolean attachOutputProxy(BridgeProxy proxy,
             repathAfterConnection(first, second);
             return existing;
         }
-        PENDING_CHANNEL_CAPACITY.set(ChannelSparkConfig.getChannelCapacity());
         try {
             // This is the native ME P2P outer-node operation. Do not replace
             // it with GridConnection.create(..., INTERNAL): that creates an
@@ -1811,8 +1800,6 @@ private static boolean attachOutputProxy(BridgeProxy proxy,
         } catch (Throwable error) {
             logConnectionFailure("AE2 P2P outer connection", first, second, error);
             return null;
-        } finally {
-            PENDING_CHANNEL_CAPACITY.remove();
         }
     }
 
@@ -2549,7 +2536,6 @@ private static boolean attachOutputProxy(BridgeProxy proxy,
         // Use AE2's public concrete factory so the requested part direction is
         // preserved without reflective lookup. This is important for cable
         // geometry and channel accounting.
-        PENDING_CHANNEL_CAPACITY.set(ChannelSparkConfig.getChannelCapacity());
         try {
             IGridConnection connection = GridConnection.create(first, second, direction);
             registerConnection(connection);
@@ -2557,8 +2543,6 @@ private static boolean attachOutputProxy(BridgeProxy proxy,
             return connection;
         } catch (Throwable error) {
             logConnectionFailure("GridConnection public factory", first, second, error);
-        } finally {
-            PENDING_CHANNEL_CAPACITY.remove();
         }
 
         // AEApi's convenience method creates an INTERNAL connection on this
@@ -2570,15 +2554,10 @@ private static boolean attachOutputProxy(BridgeProxy proxy,
         }
 
         try {
-            PENDING_CHANNEL_CAPACITY.set(ChannelSparkConfig.getChannelCapacity());
-            try {
-                IGridConnection connection = AEApi.instance().grid().createGridConnection(first, second);
-                registerConnection(connection);
-                repathAfterConnection(first, second);
-                return connection;
-            } finally {
-                PENDING_CHANNEL_CAPACITY.remove();
-            }
+            IGridConnection connection = AEApi.instance().grid().createGridConnection(first, second);
+            registerConnection(connection);
+            repathAfterConnection(first, second);
+            return connection;
         } catch (Throwable error) {
             logConnectionFailure("AE API", first, second, error);
         }
@@ -2651,7 +2630,6 @@ private static boolean attachOutputProxy(BridgeProxy proxy,
             return;
         }
         WIRELESS_CONNECTIONS.remove(gridConnection);
-        CHANNEL_CAPACITIES.remove(gridConnection);
         repathAfterConnection(first, second);
     }
 }
