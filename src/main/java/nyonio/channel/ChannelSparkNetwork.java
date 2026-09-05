@@ -278,8 +278,11 @@ public final class ChannelSparkNetwork {
             // CANNOT_CARRY_COMPRESSED is kept here, PathSegment.useDenseChannel
             // stops at the first outer node and the remote channel spark stays
             // red even though the P2P edge is visible.
-            this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY,
-                    GridFlags.CANNOT_CARRY_COMPRESSED);
+            // This synthetic outer node is the wireless channel path between
+            // the controller-side input and the remote spark.  It must allow
+            // compressed channels through; otherwise the visible bridge is
+            // present but the remote network receives no channel.
+            this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY);
             this.outerProxy.setValidSides(endpoint != null && endpoint.controllerFace
                     ? EnumSet.noneOf(EnumFacing.class)
                     : EnumSet.of(EnumFacing.DOWN));
@@ -353,8 +356,9 @@ public final class ChannelSparkNetwork {
             // it must be a dense carrier rather than a compressed-channel
             // barrier.  The bridge connection itself still has the configured
             // 32-channel capacity through createP2PGridConnection().
-            proxy.setFlags(GridFlags.DENSE_CAPACITY,
-                    GridFlags.CANNOT_CARRY_COMPRESSED);
+            // The controller-side synthetic outer node is also part of the
+            // wireless channel path and must not block compressed channels.
+            proxy.setFlags(GridFlags.DENSE_CAPACITY);
             proxy.setValidSides(sides);
             proxy.onReady();
             return proxy;
