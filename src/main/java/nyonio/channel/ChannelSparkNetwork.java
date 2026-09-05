@@ -271,8 +271,14 @@ public final class ChannelSparkNetwork {
             this.outerProxy = new AENetworkProxy(outerHost,
                     "botania_applie_channel_spark_outer", ItemStack.EMPTY, true);
             outerHost.setProxy(this.outerProxy);
-            this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY,
-                    GridFlags.CANNOT_CARRY_COMPRESSED);
+            // The synthetic outer node is the channel path between the
+            // controller-side input and the remote output.  Native ME P2P
+            // uses this flag for a same-grid I/O endpoint, but a channel
+            // spark deliberately bridges two formerly separate grids.  If
+            // CANNOT_CARRY_COMPRESSED is kept here, PathSegment.useDenseChannel
+            // stops at the first outer node and the remote channel spark stays
+            // red even though the P2P edge is visible.
+            this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY);
             this.outerProxy.setValidSides(endpoint != null && endpoint.controllerFace
                     ? EnumSet.noneOf(EnumFacing.class)
                     : EnumSet.of(EnumFacing.DOWN));
@@ -342,8 +348,11 @@ public final class ChannelSparkNetwork {
                     "botania_applie_channel_spark_outer_" + suffix,
                     ItemStack.EMPTY, true);
             host.setProxy(proxy);
-            proxy.setFlags(GridFlags.DENSE_CAPACITY,
-                    GridFlags.CANNOT_CARRY_COMPRESSED);
+            // This outer proxy participates in the wireless channel path, so
+            // it must be a dense carrier rather than a compressed-channel
+            // barrier.  The bridge connection itself still has the configured
+            // 32-channel capacity through createP2PGridConnection().
+            proxy.setFlags(GridFlags.DENSE_CAPACITY);
             proxy.setValidSides(sides);
             proxy.onReady();
             return proxy;
