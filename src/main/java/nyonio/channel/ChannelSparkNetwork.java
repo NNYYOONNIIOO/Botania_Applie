@@ -383,8 +383,12 @@ public final class ChannelSparkNetwork {
                 // orientation here: TileController is CANNOT_CARRY, so
                 // creating controller -> proxy makes the channel path stop at
                 // the connection and the synthetic channel never activates.
+                // Match TileController.findConnections(): the adjacent
+                // synthetic node is the connection source and the controller
+                // is the destination. This preserves the controller route
+                // used by AE2's channel pathing.
                 IGridConnection connection = GridConnection.create(
-                        controller, proxy.getNode(), face);
+                        proxy.getNode(), controller, face.getOpposite());
                 if (connection == null) {
                     return false;
                 }
