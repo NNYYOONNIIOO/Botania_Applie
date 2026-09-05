@@ -1608,18 +1608,23 @@ if (network == null || network.isEmpty()) {
             repathAfterConnection(first, second);
             return existing;
         }
+        PENDING_CHANNEL_CAPACITY.set(ChannelSparkConfig.getChannelCapacity());
         try {
-            // Use the common factory so the wireless edge receives the same
-            // capacity registration and path rebuild as every other channel
-            // spark bridge. The direct AE2 convenience call can bypass the
-            // GridConnection mixin on this 1.12.2 build.
-            Object created = createGridConnection(first, second,
-                    AEPartLocation.INTERNAL);
-            return created instanceof IGridConnection
-                    ? (IGridConnection) created : null;
+            // This is the native ME P2P outer-node operation. Do not replace
+            // it with GridConnection.create(..., INTERNAL): that creates an
+            // ordinary graph edge, while AE2's grid API creates the P2P edge
+            // that carries the compressed-channel path between the two outer
+            // proxies.
+            IGridConnection connection = AEApi.instance().grid()
+                    .createGridConnection(first, second);
+            registerConnection(connection);
+            repathAfterConnection(first, second);
+            return connection;
         } catch (Throwable error) {
             logConnectionFailure("AE2 P2P outer connection", first, second, error);
             return null;
+        } finally {
+            PENDING_CHANNEL_CAPACITY.remove();
         }
     }
 
