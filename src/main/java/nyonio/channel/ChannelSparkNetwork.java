@@ -1546,20 +1546,24 @@ private static BridgeBuild createGridConnectionsIfPossible(
                 return build;
             }
 
-            IGridConnection connection = createP2PGridConnection(
-                    inputOuter.getNode(), secondProxy.outerNode());
-            if (connection == null) {
+            // Establish the channel path before joining the two outer
+            // topology nodes. This lets AE2 allocate the compressed route
+            // while the two REQUIRE_CHANNEL endpoints still belong to their
+            // original networks instead of treating the second edge as an
+            // intra-grid cycle.
+            IGridConnection channelConnection = createP2PGridConnection(
+                    inputChannel.getNode(), secondProxy.innerNode());
+            if (channelConnection == null) {
                 secondProxy.destroy();
                 return build;
             }
 
-            // The outer P2P edge is a topology bridge. Use a separate
-            // compressed-channel edge between the paired channel proxies so
-            // the destination network receives an actual channel.
-            IGridConnection channelConnection = createP2PGridConnection(
-                    inputChannel.getNode(), secondProxy.innerNode());
-            if (channelConnection == null) {
-                destroyConnection(connection);
+            // The outer edge supplies the visible P2P topology and remains a
+            // separate dense branch from the channel edge above.
+            IGridConnection connection = createP2PGridConnection(
+                    inputOuter.getNode(), secondProxy.outerNode());
+            if (connection == null) {
+                destroyConnection(channelConnection);
                 secondProxy.destroy();
                 return build;
             }
