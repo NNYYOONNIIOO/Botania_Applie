@@ -374,6 +374,20 @@ public final class ChannelSparkNetwork {
             return controllerOuterProxies;
         }
 
+        private AENetworkProxy getControllerChannelProxyForNode(IGridNode node) {
+            if (node == null) {
+                return null;
+            }
+            for (AENetworkProxy proxy : controllerOuterProxies) {
+                if (proxy != null && proxy.getNode() == node) {
+                    int index = controllerOuterProxies.indexOf(proxy);
+                    return index >= 0 && index < controllerChannelProxies.size()
+                            ? controllerChannelProxies.get(index) : null;
+                }
+            }
+            return null;
+        }
+
         /**
          * Each remote channel spark is one P2P output. Reuse the six input
          * faces in deterministic order; the face count is not an output cap.
@@ -1439,6 +1453,11 @@ if (network == null || network.isEmpty()) {
             mainProxy.wakeControllerChannelInputs();
             try {
                 secondProxy.innerProxy.getTick().wakeDevice(secondProxy.innerNode());
+                AENetworkProxy channelProxy = mainProxy.getControllerChannelProxyForNode(
+                        inputOuter.getNode());
+                if (channelProxy != null && channelProxy.getNode() != null) {
+                    channelProxy.getTick().wakeDevice(channelProxy.getNode());
+                }
             } catch (Throwable ignored) {
             }
             build.connections.add(connection);
