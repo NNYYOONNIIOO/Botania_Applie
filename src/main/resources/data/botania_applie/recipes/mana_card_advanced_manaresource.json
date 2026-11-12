@@ -1,0 +1,14 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    {
+      "item": "botania_applie:mana_card_basic"
+    },
+    {
+      "item": "botania:terrasteel_ingot"
+    }
+  ],
+  "result": {
+    "item": "botania_applie:mana_card_advanced"
+  }
+}

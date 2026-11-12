@@ -1,0 +1,20 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    {
+      "item": "appliedenergistics2:empty_storage_cell"
+    },
+    {
+      "item": "botania_applie:mana_storage_component_16k"
+    }
+  ],
+  "result": {
+    "item": "botania_applie:mana_storage_cell_16k"
+  },
+  "conditions": [
+    {
+      "type": "botania_applie:config",
+      "option": "components"
+    }
+  ]
+}

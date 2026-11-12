@@ -1,37 +1,18 @@
 package nyonio;
-
-import net.minecraftforge.common.config.Config;
-import net.minecraftforge.common.config.ConfigManager;
-import net.minecraftforge.fml.client.event.ConfigChangedEvent;
-import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
-
-@Config(modid = BotaniaApplie.MODID)
-public class ModConfig {
-    
-    @Config.Name("Items")
-    @Config.Comment("Item settings")
-    public static final Items ITEMS = new Items();
-    
-    public static class Items {
-        @Config.Name("Enable Mana Cell Housing")
-        @Config.Comment("Set to true to enable the Mana Cell Housing item")
-        @Config.RequiresWorldRestart
-        public boolean enableManaCellHousing = false;
-        
-        @Config.Name("Enable Mana Storage Components")
-        @Config.Comment("Set to true to enable the ME Mana Storage Component items")
-        @Config.RequiresWorldRestart
-        public boolean enableManaStorageComponent = true;
-    }
-    
-    @Mod.EventBusSubscriber(modid = BotaniaApplie.MODID)
-    private static class EventHandler {
-        @SubscribeEvent
-        public static void onConfigChanged(ConfigChangedEvent.OnConfigChangedEvent event) {
-            if (event.getModID().equals(BotaniaApplie.MODID)) {
-                ConfigManager.sync(BotaniaApplie.MODID, Config.Type.INSTANCE);
-            }
-        }
+import net.minecraftforge.common.ForgeConfigSpec;
+public final class ModConfig {
+    public static final ForgeConfigSpec SPEC;
+    public static final ForgeConfigSpec.BooleanValue ENABLE_HOUSING;
+    public static final ForgeConfigSpec.BooleanValue ENABLE_COMPONENTS;
+    public static final ForgeConfigSpec.IntValue SPARK_RADIUS;
+    static {
+        ForgeConfigSpec.Builder b = new ForgeConfigSpec.Builder();
+        b.push("items");
+        ENABLE_HOUSING=b.define("enable_mana_cell_housing",false);
+        ENABLE_COMPONENTS=b.define("enable_mana_storage_components",true);
+        b.pop().push("channel_spark");
+        SPARK_RADIUS=b.comment("Maximum distance between adjacent channel sparks; intermediate sparks relay the network.").defineInRange("transfer_radius",36,1,4096);
+        b.pop();
+        SPEC=b.build();
     }
 }

@@ -1,106 +1,41 @@
 package nyonio.item;
-
-import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.EnumActionResult;
-import net.minecraft.util.EnumFacing;
-import net.minecraft.util.EnumHand;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.RayTraceResult;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.item.ItemUseContext;
+import net.minecraft.util.*;
+import net.minecraft.util.math.*;
+import net.minecraft.util.math.vector.Vector3d;
 import net.minecraft.world.World;
+import nyonio.BotaniaApplie;
 import nyonio.channel.ChannelSparkNetwork;
 import nyonio.entity.EntityChannelSpark;
-
 public class ItemChannelSpark extends Item {
-    public ItemChannelSpark() {
-        setMaxStackSize(64);
-        setUnlocalizedName("botania_applie.channel_spark");
-    }
-
-    @Override
-    public String getUnlocalizedName(ItemStack stack) {
-        return "item.botania_applie.channel_spark";
-    }
-
-    @Override
-    public EnumActionResult onItemUseFirst(EntityPlayer player, World world, BlockPos pos, EnumFacing side,
-                                            float hitX, float hitY, float hitZ, EnumHand hand) {
-        if (world.isRemote) {
-            return EnumActionResult.SUCCESS;
+    public ItemChannelSpark() { super(BotaniaApplie.properties()); }
+    @Override public ActionResultType onItemUseFirst(ItemStack stack,ItemUseContext context) { return placeAt(context.getWorld(),context.getPlayer(),context.getHand(),context.getPos()); }
+    @Override public ActionResultType onItemUse(ItemUseContext context) { return placeAt(context.getWorld(),context.getPlayer(),context.getHand(),context.getPos()); }
+    @Override public ActionResult<ItemStack> onItemRightClick(World world,PlayerEntity player,Hand hand) {
+        if(world.isRemote) return ActionResult.resultSuccess(player.getHeldItem(hand));
+        RayTraceResult hit=player.pick(5D,1F,false);
+        ActionResultType result;
+        if(hit.getType()==RayTraceResult.Type.BLOCK) result=placeAt(world,player,hand,((BlockRayTraceResult)hit).getPos());
+        else {
+            BlockPos pos=new BlockPos(player.getEyePosition(1F).add(player.getLookVec().scale(3D)));
+            if(ChannelSparkNetwork.hasSparkInBlock(world,pos)) return ActionResult.resultFail(player.getHeldItem(hand));
+            result=spawn(world,player,hand,createSpark(world,pos.getX()+0.5,pos.getY()+0.5,pos.getZ()+0.5));
         }
-
-        return placeAt(world, player, hand, pos);
+        return new ActionResult<>(result,player.getHeldItem(hand));
     }
-
-    @Override
-    public EnumActionResult onItemUse(EntityPlayer player, World world, BlockPos pos, EnumHand hand,
-                                      EnumFacing facing, float hitX, float hitY, float hitZ) {
-        if (world.isRemote) {
-            return EnumActionResult.SUCCESS;
-        }
-
-        return placeAt(world, player, hand, pos);
+    protected EntityChannelSpark createSpark(World world,double x,double y,double z) { return new EntityChannelSpark(world,x,y,z); }
+    private ActionResultType placeAt(World world,PlayerEntity player,Hand hand,BlockPos pos) {
+        if(world.isRemote) return ActionResultType.SUCCESS;
+        if(player==null || ChannelSparkNetwork.hasSparkInBlock(world,pos.up())) return ActionResultType.FAIL;
+        EntityChannelSpark spark=createSpark(world,pos.getX()+0.5,pos.getY()+1.25,pos.getZ()+0.5);
+        spark.setTarget(pos);return spawn(world,player,hand,spark);
     }
-
-    @Override
-    public ActionResult<ItemStack> onItemRightClick(World world, EntityPlayer player, EnumHand hand) {
-        ItemStack stack = player.getHeldItem(hand);
-        if (world.isRemote) {
-            return new ActionResult<>(EnumActionResult.SUCCESS, stack);
-        }
-
-        RayTraceResult hit = player.rayTrace(5.0D, 1.0F);
-        EnumActionResult result;
-        if (hit != null && hit.typeOfHit == RayTraceResult.Type.BLOCK) {
-            result = placeAt(world, player, hand, hit.getBlockPos());
-        } else {
-            Vec3d eyes = player.getPositionEyes(1.0F);
-            Vec3d look = player.getLookVec();
-            Vec3d location = eyes.addVector(look.x * 3.0D, look.y * 3.0D, look.z * 3.0D);
-            result = placeFloating(world, player, hand, location);
-        }
-        return new ActionResult<>(result, player.getHeldItem(hand));
-    }
-
-    protected EntityChannelSpark createSpark(World world, double x, double y, double z) {
-        return new EntityChannelSpark(world, x, y, z);
-    }
-
-    protected EnumActionResult placeFloating(World world, EntityPlayer player, EnumHand hand, Vec3d location) {
-        BlockPos containingBlock = new BlockPos(location);
-        if (ChannelSparkNetwork.hasSparkInBlock(world, containingBlock)) {
-            return EnumActionResult.FAIL;
-        }
-        EntityChannelSpark spark = createSpark(world, location.x, location.y, location.z);
-        return spawn(world, player, hand, spark);
-    }
-
-    protected EnumActionResult placeAt(World world, EntityPlayer player, EnumHand hand, BlockPos targetPos) {
-        BlockPos sparkBlock = targetPos.up();
-        if (ChannelSparkNetwork.hasSparkInBlock(world, sparkBlock)) {
-            return EnumActionResult.FAIL;
-        }
-
-        EntityChannelSpark spark = createSpark(world,
-                targetPos.getX() + 0.5D, targetPos.getY() + 1.5D, targetPos.getZ() + 0.5D);
-        spark.setTarget(targetPos);
-        return spawn(world, player, hand, spark);
-    }
-
-    protected EnumActionResult spawn(World world, EntityPlayer player, EnumHand hand, EntityChannelSpark spark) {
-        if (!world.spawnEntity(spark)) {
-            return EnumActionResult.FAIL;
-        }
-        consume(player, hand);
-        return EnumActionResult.SUCCESS;
-    }
-
-    private static void consume(EntityPlayer player, EnumHand hand) {
-        if (!player.capabilities.isCreativeMode) {
-            player.getHeldItem(hand).shrink(1);
-        }
+    private ActionResultType spawn(World world,PlayerEntity player,Hand hand,EntityChannelSpark spark) {
+        if(!world.addEntity(spark)) return ActionResultType.FAIL;
+        if(!player.abilities.isCreativeMode) player.getHeldItem(hand).shrink(1);
+        return ActionResultType.SUCCESS;
     }
 }

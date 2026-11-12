@@ -2,9 +2,9 @@ package nyonio.ae2;
 
 import java.io.IOException;
 
-import io.netty.buffer.ByteBuf;
+import net.minecraft.network.PacketBuffer;
 import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.nbt.CompoundNBT;
 import appeng.api.config.FuzzyMode;
 import appeng.api.storage.IStorageChannel;
 import appeng.api.storage.data.IAEStack;
@@ -98,8 +98,8 @@ public class ManaStack implements IAEStack<ManaStack> {
     }
 
     @Override
-    public void writeToNBT(NBTTagCompound i) {
-        i.setLong("mana", this.stackSize);
+    public void writeToNBT(CompoundNBT i) {
+        i.putLong("mana", this.stackSize);
     }
 
     @Override
@@ -118,7 +118,7 @@ public class ManaStack implements IAEStack<ManaStack> {
     }
 
     @Override
-    public void writeToPacket(ByteBuf data) throws IOException {
+    public void writeToPacket(PacketBuffer data) {
         data.writeLong(this.stackSize);
     }
 
@@ -135,12 +135,10 @@ public class ManaStack implements IAEStack<ManaStack> {
         return new ManaStack(0);
     }
 
-    @Override
     public boolean isItem() {
         return false;
     }
 
-    @Override
     public boolean isFluid() {
         return false;
     }

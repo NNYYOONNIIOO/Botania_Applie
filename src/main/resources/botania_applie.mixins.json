@@ -1,15 +1,18 @@
 {
   "required": true,
   "package": "nyonio.mixin",
-  "refmap": "botania_applie.mixins.refmap.json",
-  "target": "@env(DEFAULT)",
   "minVersion": "0.8",
   "compatibilityLevel": "JAVA_8",
   "mixins": [
     "MixinFluixInterfaceTargets",
     "MixinGridNodeConnectedSides",
     "MixinPartCableInternalChannels",
-    "MixinDenseCableInternal"
+    "MixinDenseCableInternal",
+    "TilePoolManaAccessor",
+    "MixinFluidManaUpgrades",
+    "MixinFluidManaContainer",
+    "MixinFluidInterfaceTileDrops",
+    "MixinFluidInterfacePartDrops"
   ],
   "injectors": {
     "defaultRequire": 1

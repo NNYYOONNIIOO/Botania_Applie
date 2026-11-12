@@ -1,0 +1,22 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "aea",
+    "efe",
+    "aea"
+  ],
+  "key": {
+    "a": {
+      "item": "botania:mana_powder"
+    },
+    "e": {
+      "item": "appliedenergistics2:fluix_crystal"
+    },
+    "f": {
+      "item": "botania:mana_pool"
+    }
+  },
+  "result": {
+    "item": "botania_applie:fluix_mana_pool"
+  }
+}

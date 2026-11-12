@@ -1,114 +1,81 @@
 buildscript {
-    repositories {
-        maven { url = 'https://maven.minecraftforge.net/' }
-        mavenCentral()
-    }
-    dependencies {
-        classpath 'net.minecraftforge.gradle:ForgeGradle:3.+'
-    }
+    repositories { maven { url = 'https://maven.minecraftforge.net' }; mavenCentral() }
+    dependencies { classpath 'net.minecraftforge.gradle:ForgeGradle:5.1.77' }
 }
-        
 apply plugin: 'net.minecraftforge.gradle'
 apply plugin: 'eclipse'
 apply plugin: 'maven-publish'
-
-repositories {
-    maven { url = 'https://cursemaven.com' }
-    maven { url = 'https://maven.cleanroommc.com' }
-    flatDir {
-        dirs 'libs'
-    }
-}
-
-version = '1.3.0'
+version = '1.3.0-1.16.5'
 group = 'nyonio'
 archivesBaseName = 'botania_applie'
-
-sourceCompatibility = targetCompatibility = compileJava.sourceCompatibility = compileJava.targetCompatibility = '1.8'
-
-sourceSets {
-    api
-}
-
-sourceSets.main.compileClasspath += sourceSets.api.output
-sourceSets.main.runtimeClasspath += sourceSets.api.output
-
+sourceCompatibility = targetCompatibility = JavaVersion.VERSION_1_8
 minecraft {
-    mappings channel: 'snapshot', version: '20171003-1.12'
-    
+    mappings channel: 'snapshot', version: '20210309-1.16.5'
     accessTransformer = file('src/main/resources/META-INF/accesstransformer.cfg')
-
     runs {
+        all {
+            property 'mixin.env.remapRefMap', 'true'
+            property 'mixin.env.refMapRemappingFile', file('build/createSrgToMcp/output.srg').absolutePath
+        }
         client {
-            workingDirectory project.file('run')
-            property 'forge.logging.markers', 'SCAN,REGISTRIES,REGISTRYDUMP'
-            property 'forge.logging.console.level', 'debug'
+            workingDirectory project.file(project.hasProperty('smokeTest') ? 'run-smoke-check' : 'run')
+            property 'forge.logging.console.level', 'info'
+            args '--mixin.config', 'botania_applie.mixins.json'
+            mods {
+                botania_applie { source sourceSets.main }
+                if (project.hasProperty('smokeTest')) {
+                    botania_applie_smoke { source sourceSets.test }
+                }
+            }
         }
-
         server {
-            property 'forge.logging.markers', 'SCAN,REGISTRIES,REGISTRYDUMP'
-            property 'forge.logging.console.level', 'debug'
+            workingDirectory project.file('run-server')
+            property 'forge.logging.console.level', 'info'
+            args '--mixin.config', 'botania_applie.mixins.json', '--nogui'
+            mods { botania_applie { source sourceSets.main } }
+        }
+        data {
+            workingDirectory project.file('run-data')
+            property 'forge.logging.console.level', 'info'
+            args '--mixin.config', 'botania_applie.mixins.json', '--mod', 'botania_applie', '--all', '--output', file('build/smoke-data'), '--existing', file('src/main/resources')
+            mods { botania_applie { source sourceSets.main } }
         }
     }
 }
-
-tasks.withType(JavaCompile) {
-    options.encoding = 'UTF-8'
+if (project.hasProperty('smokeTest')) {
+    tasks.matching { it.name == 'runClient' }.configureEach { dependsOn tasks.named('testClasses') }
 }
-
-processResources {
-    from(sourceSets.main.resources.srcDirs) {
-        include 'mcmod.info'
-        expand 'version': project.version, 'mcversion': '1.12.2'
-    }
-    from(sourceSets.main.resources.srcDirs) {
-        exclude 'mcmod.info'
-    }
+repositories {
+    mavenCentral()
+    maven { url = 'https://modmaven.dev/'; content { includeGroup 'appeng' } }
+    maven { url = 'https://maven.blamejared.com' }
+    maven { url = 'https://maven.theillusivec4.top/' }
+    flatDir { dirs 'libs' }
 }
-
 dependencies {
-    minecraft 'net.minecraftforge:forge:1.12.2-14.23.5.2859'
-    
-    implementation fg.deobf("curse.maven:botania-225643:3330934")
-    implementation fg.deobf("curse.maven:ae2-extended-life-570458:5411078")
-    implementation fg.deobf("curse.maven:ae2-fluid-crafting-rework-623955:5751930")
-    implementation fg.deobf("curse.maven:mekanism-energistics-1027681:5775101")
-    implementation fg.deobf("curse.maven:the-one-probe-community-edition-885670:8547575")
-    
-    implementation files('libs/terminal_interaction_integration-1.0.jar')
-    
-    annotationProcessor 'org.ow2.asm:asm-debug-all:5.2'
-    annotationProcessor 'com.google.guava:guava:21.0'
-    annotationProcessor 'com.google.code.gson:gson:2.8.9'
-    implementation ('zone.rong:mixinbooter:10.7') { transitive = false }
+    minecraft 'net.minecraftforge:forge:1.16.5-36.2.42'
+    implementation fg.deobf('appeng:appliedenergistics2:8.4.7')
+    implementation fg.deobf('bundled:Botania:1.16.5-420.3')
+    implementation fg.deobf('bundled:terminal_interaction_integration:1.2.4-1.16.5')
+    implementation fg.deobf('top.theillusivec4.curios:curios-forge:1.16.5-4.0.8.2')
+    runtimeOnly fg.deobf('vazkii.patchouli:Patchouli:1.16.4-53.3')
+    compileOnly files('libs/theoneprobe-1.16-3.1.4-2-api.jar')
+    annotationProcessor 'org.spongepowered:mixin:0.8:processor'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.mockito:mockito-inline:3.12.4'
 }
-
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.compilerArgs += ['-Xmaxerrs', '500']
+}
+processResources { filesMatching('META-INF/mods.toml') { expand version: project.version } }
 jar {
     manifest {
-        attributes([
-            "Specification-Title": "botania_applie",
-            "Specification-Vendor": "nyonio",
-            "Specification-Version": "1",
-            "Implementation-Title": project.name,
-            "Implementation-Version": "${version}",
-            "Implementation-Vendor" :"nyonio",
-            "Implementation-Timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ssZ"),
-            "FMLAT": "accesstransformer.cfg"
-        ])
+        attributes('Specification-Title': 'botania_applie', 'Specification-Vendor': 'Nyonio',
+            'Specification-Version': '1', 'Implementation-Title': project.name,
+            'Implementation-Version': project.version, 'Implementation-Vendor': 'Nyonio',
+            'MixinConfigs': 'botania_applie.mixins.json')
     }
+    finalizedBy 'reobfJar'
 }
-
-jar.finalizedBy('reobfJar') 
-
-publishing {
-    publications {
-        mavenJava(MavenPublication) {
-            artifact jar
-        }
-    }
-    repositories {
-        maven {
-            url "file:///${project.projectDir}/mcmodsrepo"
-        }
-    }
-}
+publishing { publications { mavenJava(MavenPublication) { artifact jar } } }

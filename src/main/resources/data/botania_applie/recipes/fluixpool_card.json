@@ -1,0 +1,14 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    {
+      "item": "appliedenergistics2:crafting_card"
+    },
+    {
+      "item": "botania_applie:fluix_mana_pool"
+    }
+  ],
+  "result": {
+    "item": "botania_applie:fluixpool_card"
+  }
+}

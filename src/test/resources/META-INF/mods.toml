@@ -1,0 +1,13 @@
+modLoader="javafml"
+loaderVersion="[36,)"
+license="All Rights Reserved"
+[[mods]]
+modId="botania_applie_smoke"
+version="1"
+displayName="Botania Applie development checks"
+[[dependencies.botania_applie_smoke]]
+modId="botania_applie"
+mandatory=true
+versionRange="[1.3.0,)"
+ordering="AFTER"
+side="BOTH"

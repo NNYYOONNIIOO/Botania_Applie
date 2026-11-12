@@ -8,7 +8,7 @@ import javax.annotation.Nullable;
 import appeng.api.config.AccessRestriction;
 import appeng.api.config.FuzzyMode;
 import appeng.api.config.IncludeExclude;
-import appeng.api.storage.ICellInventoryHandler;
+import appeng.api.storage.cells.ICellInventoryHandler;
 import appeng.api.storage.data.IItemList;
 
 public class ManaCellInventoryHandler implements ICellInventoryHandler<ManaStack> {

@@ -1,14 +1,14 @@
 package nyonio.integration.wireless;
 
-import net.minecraft.entity.player.EntityPlayer;
-import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
 import vazkii.botania.api.mana.ManaItemsEvent;
 
 public final class WirelessManaItemsHandler {
 
     @SubscribeEvent
     public void onManaItems(ManaItemsEvent event) {
-        EntityPlayer player = event.getEntityPlayer();
+        PlayerEntity player = event.getPlayer();
         if (player == null || player.world == null || player.world.isRemote) {
             return;
         }

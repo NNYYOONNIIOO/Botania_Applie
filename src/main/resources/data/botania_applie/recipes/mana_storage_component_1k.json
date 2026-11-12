@@ -1,0 +1,28 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "aba",
+    "bcb",
+    "aba"
+  ],
+  "key": {
+    "a": {
+      "item": "botania:mana_powder"
+    },
+    "b": {
+      "tag": "forge:gems/certus_quartz"
+    },
+    "c": {
+      "item": "appliedenergistics2:logic_processor"
+    }
+  },
+  "result": {
+    "item": "botania_applie:mana_storage_component_1k"
+  },
+  "conditions": [
+    {
+      "type": "botania_applie:config",
+      "option": "components"
+    }
+  ]
+}

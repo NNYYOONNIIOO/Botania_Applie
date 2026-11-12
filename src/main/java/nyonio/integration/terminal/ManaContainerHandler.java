@@ -1,18 +1,7 @@
 package nyonio.integration.terminal;
 
-import appeng.api.config.Actionable;
-import appeng.api.networking.security.IActionHost;
 import appeng.api.networking.security.IActionSource;
-import appeng.api.networking.storage.IStorageGrid;
-import appeng.container.implementations.ContainerMEMonitorable;
-import appeng.me.helpers.PlayerSource;
-import net.minecraft.entity.player.EntityPlayer;
-import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.ItemStack;
-import net.minecraftforge.fml.common.network.simpleimpl.SimpleNetworkWrapper;
-import nyonio.BotaniaApplie;
-import nyonio.ae2.ManaStack;
-import nyonio.ae2.ManaStorageChannel;
 import nyonio.terminal_interaction_integration.api.IContainerHandler;
 import vazkii.botania.api.mana.IManaItem;
 
@@ -43,6 +32,7 @@ public class ManaContainerHandler implements IContainerHandler {
     
     @Override
     public long extract(ItemStack container, long amount, IActionSource source) {
+        if (amount <= 0) return 0;
         if (container.isEmpty() || !(container.getItem() instanceof IManaItem)) {
             return 0;
         }
@@ -62,6 +52,7 @@ public class ManaContainerHandler implements IContainerHandler {
     
     @Override
     public long inject(ItemStack container, long amount, IActionSource source) {
+        if (amount <= 0) return 0;
         if (container.isEmpty() || !(container.getItem() instanceof IManaItem)) {
             return 0;
         }
@@ -86,7 +77,7 @@ public class ManaContainerHandler implements IContainerHandler {
         if (container.isEmpty()) {
             return "";
         }
-        return container.getDisplayName();
+        return container.getDisplayName().getString();
     }
     
     @Override

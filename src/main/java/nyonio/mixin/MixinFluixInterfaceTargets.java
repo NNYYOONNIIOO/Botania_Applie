@@ -4,10 +4,10 @@ import nyonio.FluixPoolManaHelper;
 import nyonio.IFluixManaReceiver;
 import org.spongepowered.asm.mixin.Mixin;
 
-@Mixin(targets = {
-        "appeng.tile.networking.TileCableBus",
-        "appeng.tile.misc.TileInterface",
-        "appeng.fluids.tile.TileFluidInterface"
+@Mixin(value = {
+        appeng.tile.networking.CableBusTileEntity.class,
+        appeng.tile.misc.InterfaceTileEntity.class,
+        appeng.fluids.tile.FluidInterfaceTileEntity.class
 }, remap = false)
 public abstract class MixinFluixInterfaceTargets implements IFluixManaReceiver {
     @Override
@@ -17,8 +17,8 @@ public abstract class MixinFluixInterfaceTargets implements IFluixManaReceiver {
 
     @Override
     public Object getFluixManaTarget() {
-        if ((Object) this instanceof appeng.tile.networking.TileCableBus) {
-            appeng.api.parts.IPart part = nyonio.FluixPoolManaHelper.findCardPart((appeng.tile.networking.TileCableBus) (Object) this);
+        if ((Object) this instanceof appeng.tile.networking.CableBusTileEntity) {
+            appeng.api.parts.IPart part = nyonio.FluixPoolManaHelper.findCardPart((appeng.tile.networking.CableBusTileEntity) (Object) this);
             return part == null ? this : part;
         }
         return this;

@@ -3,13 +3,13 @@ package nyonio.ae2;
 import javax.annotation.Nonnull;
 
 import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.nbt.CompoundNBT;
 import net.minecraftforge.items.IItemHandler;
 import appeng.api.config.Actionable;
 import appeng.api.config.FuzzyMode;
 import appeng.api.networking.security.IActionSource;
-import appeng.api.storage.ICellInventory;
-import appeng.api.storage.ISaveProvider;
+import appeng.api.storage.cells.ICellInventory;
+import appeng.api.storage.cells.ISaveProvider;
 import appeng.api.storage.data.IItemList;
 import appeng.items.contents.CellConfig;
 import appeng.util.Platform;
@@ -29,7 +29,7 @@ public class ManaCellInventory implements ICellInventory<ManaStack> {
     private final int totalBytes;
     private long storedMana;
     private boolean isPersisted = true;
-    private final NBTTagCompound tagCompound;
+    private final CompoundNBT tagCompound;
 
     public ManaCellInventory(ItemStack itemStack, ISaveProvider saveProvider, int kilobytes) {
         this.itemStack = itemStack;
@@ -37,11 +37,11 @@ public class ManaCellInventory implements ICellInventory<ManaStack> {
         this.totalBytes = kilobytes * 1024;
         
         // 使用Platform.openNbtData获取NBT的直接引用（与AE2一致）
-        this.tagCompound = Platform.openNbtData(itemStack);
+        this.tagCompound = itemStack.getOrCreateTag();
         
         // 从AE2标准格式读取魔力值
-        if (this.tagCompound.hasKey(ITEM_SLOT_0) && this.tagCompound.getCompoundTag(ITEM_SLOT_0).hasKey(MANA_TAG)) {
-            this.storedMana = this.tagCompound.getCompoundTag(ITEM_SLOT_0).getLong(MANA_TAG);
+        if (this.tagCompound.contains(ITEM_SLOT_0) && this.tagCompound.getCompound(ITEM_SLOT_0).contains(MANA_TAG)) {
+            this.storedMana = this.tagCompound.getCompound(ITEM_SLOT_0).getLong(MANA_TAG);
         } else {
             this.storedMana = 0;
         }
@@ -136,20 +136,20 @@ public class ManaCellInventory implements ICellInventory<ManaStack> {
     }
 
     @Override
-    public int getStatusForCell() {
+    public appeng.api.storage.cells.CellState getStatusForCell() {
         if (this.storedMana == 0) {
-            return 4;
+            return appeng.api.storage.cells.CellState.EMPTY;
         }
         
         if (this.canHoldNewItem()) {
-            return 1;
+            return appeng.api.storage.cells.CellState.NOT_EMPTY;
         }
         
         if (this.getRemainingItemCount() > 0) {
-            return 2;
+            return appeng.api.storage.cells.CellState.TYPES_FULL;
         }
         
-        return 3;
+        return appeng.api.storage.cells.CellState.FULL;
     }
 
     @Override
@@ -159,23 +159,23 @@ public class ManaCellInventory implements ICellInventory<ManaStack> {
         }
         
         if (this.storedMana > 0) {
-            NBTTagCompound data = new NBTTagCompound();
-            data.setLong(MANA_TAG, this.storedMana);
+            CompoundNBT data = new CompoundNBT();
+            data.putLong(MANA_TAG, this.storedMana);
             
             // 写入到#0标签（AE2标准数据槽）
-            this.tagCompound.setTag(ITEM_SLOT_0, data);
+            this.tagCompound.put(ITEM_SLOT_0, data);
             // 写入数量到@0标签
-            this.tagCompound.setLong(ITEM_COUNT_0, this.storedMana);
+            this.tagCompound.putLong(ITEM_COUNT_0, this.storedMana);
             // 写入类型计数（1种类型：mana）
-            this.tagCompound.setShort(ITEM_TYPE_TAG, (short) 1);
+            this.tagCompound.putShort(ITEM_TYPE_TAG, (short) 1);
             // 更新总物品计数
-            this.tagCompound.setLong(ITEM_COUNT_TAG, this.storedMana);
+            this.tagCompound.putLong(ITEM_COUNT_TAG, this.storedMana);
         } else {
             // 清空时移除所有相关标签
-            this.tagCompound.removeTag(ITEM_SLOT_0);
-            this.tagCompound.removeTag(ITEM_COUNT_0);
-            this.tagCompound.removeTag(ITEM_TYPE_TAG);
-            this.tagCompound.removeTag(ITEM_COUNT_TAG);
+            this.tagCompound.remove(ITEM_SLOT_0);
+            this.tagCompound.remove(ITEM_COUNT_0);
+            this.tagCompound.remove(ITEM_TYPE_TAG);
+            this.tagCompound.remove(ITEM_COUNT_TAG);
         }
         
         this.isPersisted = true;

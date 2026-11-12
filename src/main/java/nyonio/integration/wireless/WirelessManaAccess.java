@@ -1,10 +1,10 @@
 package nyonio.integration.wireless;
 
-import appeng.api.AEApi;
+import appeng.core.Api;
 import appeng.api.features.IWirelessTermHandler;
 import appeng.api.features.IWirelessTermRegistry;
 import appeng.helpers.WirelessTerminalGuiObject;
-import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraftforge.items.IItemHandler;
 import vazkii.botania.api.BotaniaAPI;
@@ -26,11 +26,11 @@ public final class WirelessManaAccess {
     private WirelessManaAccess() {
     }
 
-    public static boolean hasWirelessTerminal(EntityPlayer player) {
+    public static boolean hasWirelessTerminal(PlayerEntity player) {
         return !findTerminals(player).isEmpty();
     }
 
-    public static long getAvailableMana(EntityPlayer player) {
+    public static long getAvailableMana(PlayerEntity player) {
         if (player == null || player.world == null || player.world.isRemote) {
             return 0;
         }
@@ -56,7 +56,7 @@ public final class WirelessManaAccess {
         return available;
     }
 
-    public static int extractMana(EntityPlayer player, int amount) {
+    public static int extractMana(PlayerEntity player, int amount) {
         if (player == null || player.world == null || player.world.isRemote || amount <= 0) {
             return 0;
         }
@@ -92,7 +92,7 @@ public final class WirelessManaAccess {
         return extracted;
     }
 
-    private static List<TerminalReference> findTerminals(EntityPlayer player) {
+    private static List<TerminalReference> findTerminals(PlayerEntity player) {
         List<TerminalReference> terminals = new ArrayList<>();
         if (player == null) {
             return terminals;
@@ -100,7 +100,7 @@ public final class WirelessManaAccess {
 
         IWirelessTermRegistry registry;
         try {
-            registry = AEApi.instance().registries().wireless();
+            registry = Api.instance().registries().wireless();
         } catch (Throwable ignored) {
             return terminals;
         }
@@ -110,7 +110,7 @@ public final class WirelessManaAccess {
         }
 
         try {
-            IItemHandler baubles = BotaniaAPI.internalHandler.getBaublesInventoryWrapped(player);
+            IItemHandler baubles = top.theillusivec4.curios.api.CuriosApi.getCuriosHelper().getEquippedCurios(player).orElse(null);
             if (baubles != null) {
                 for (int slot = 0; slot < baubles.getSlots(); slot++) {
                     addTerminal(registry, terminals, baubles.getStackInSlot(slot), slot, true);
@@ -144,16 +144,15 @@ public final class WirelessManaAccess {
         }
     }
 
-    private static WirelessTerminalGuiObject createAccess(TerminalReference terminal, EntityPlayer player) {
+    private static WirelessTerminalGuiObject createAccess(TerminalReference terminal, PlayerEntity player) {
         try {
-            return new WirelessTerminalGuiObject(terminal.handler, terminal.stack, player, player.world,
-                    terminal.slot, terminal.bauble ? 1 : 0, Integer.MIN_VALUE);
+            return new WirelessTerminalGuiObject(terminal.handler, terminal.stack, player, terminal.slot);
         } catch (Throwable ignored) {
             return null;
         }
     }
 
-    private static boolean hasPower(TerminalReference terminal, EntityPlayer player) {
+    private static boolean hasPower(TerminalReference terminal, PlayerEntity player) {
         try {
             return terminal.handler.hasPower(player, TERMINAL_POWER_PER_REQUEST, terminal.stack);
         } catch (Throwable ignored) {
@@ -161,7 +160,7 @@ public final class WirelessManaAccess {
         }
     }
 
-    private static boolean usePower(TerminalReference terminal, EntityPlayer player) {
+    private static boolean usePower(TerminalReference terminal, PlayerEntity player) {
         try {
             return terminal.handler.usePower(player, TERMINAL_POWER_PER_REQUEST, terminal.stack);
         } catch (Throwable ignored) {

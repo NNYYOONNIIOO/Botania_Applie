@@ -6,3 +6,9 @@
 /mcmodsrepo/
 /outputs/
 /work/
+/.port-reference/
+/run-server/
+/run-data/
+/run-smoke/
+/logs/
+/run-smoke-check/

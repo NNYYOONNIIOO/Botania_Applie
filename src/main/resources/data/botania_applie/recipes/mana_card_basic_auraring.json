@@ -1,0 +1,14 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    {
+      "item": "appliedenergistics2:crafting_card"
+    },
+    {
+      "item": "botania:aura_ring"
+    }
+  ],
+  "result": {
+    "item": "botania_applie:mana_card_basic"
+  }
+}

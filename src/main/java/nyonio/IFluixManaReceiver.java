@@ -3,7 +3,7 @@ package nyonio;
 import net.minecraft.entity.Entity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntity;
-import net.minecraft.item.EnumDyeColor;
+import net.minecraft.item.DyeColor;
 import net.minecraft.util.math.AxisAlignedBB;
 import vazkii.botania.api.mana.IManaPool;
 import vazkii.botania.api.mana.IManaCollector;
@@ -35,7 +35,7 @@ public interface IFluixManaReceiver extends IManaPool, IManaCollector, ISparkAtt
     }
 
     @Override
-    default void recieveMana(int amount) {
+    default void receiveMana(int amount) {
         if (!hasFluixPoolCard()) {
             return;
         }
@@ -56,7 +56,7 @@ public interface IFluixManaReceiver extends IManaPool, IManaCollector, ISparkAtt
     }
 
     @Override
-    default boolean canRecieveManaFromBursts() {
+    default boolean canReceiveManaFromBursts() {
         return hasFluixPoolCard();
     }
 
@@ -66,12 +66,12 @@ public interface IFluixManaReceiver extends IManaPool, IManaCollector, ISparkAtt
     }
 
     @Override
-    default EnumDyeColor getColor() {
-        return EnumDyeColor.WHITE;
+    default DyeColor getColor() {
+        return DyeColor.WHITE;
     }
 
     @Override
-    default void setColor(EnumDyeColor color) {
+    default void setColor(DyeColor color) {
     }
 
     @Override

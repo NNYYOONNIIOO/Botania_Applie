@@ -2,17 +2,17 @@ package nyonio.handler;
 
 import appeng.api.config.Actionable;
 import appeng.api.networking.security.IActionSource;
-import appeng.api.storage.ICellInventory;
-import appeng.api.storage.ICellInventoryHandler;
+import appeng.api.storage.cells.ICellInventory;
+import appeng.api.storage.cells.ICellInventoryHandler;
 import appeng.api.storage.IMEInventory;
 import appeng.api.storage.IMEInventoryHandler;
 import appeng.me.helpers.MachineSource;
 import appeng.me.storage.MEInventoryHandler;
-import appeng.tile.storage.TileDrive;
+import appeng.tile.storage.DriveTileEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntity;
-import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
-import net.minecraftforge.fml.common.gameevent.TickEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.event.TickEvent;
 import nyonio.ae2.ManaStack;
 import nyonio.ae2.ManaStorageChannel;
 import nyonio.item.ItemManaCard;
@@ -31,17 +31,17 @@ public class ManaCardTickHandler {
         tickCounter++;
         if (tickCounter % 20 != 0) return;
 
-        for (net.minecraft.world.WorldServer world : net.minecraftforge.fml.common.FMLCommonHandler.instance().getMinecraftServerInstance().worlds) {
+        for (net.minecraft.world.server.ServerWorld world : net.minecraftforge.fml.server.ServerLifecycleHooks.getCurrentServer().getWorlds()) {
             for (TileEntity te : world.loadedTileEntityList) {
-                if (te instanceof TileDrive) {
-                    processDrive((TileDrive) te);
+                if (te instanceof DriveTileEntity) {
+                    processDrive((DriveTileEntity) te);
                 }
             }
         }
     }
 
     @SuppressWarnings("unchecked")
-    private void processDrive(TileDrive drive) {
+    private void processDrive(DriveTileEntity drive) {
         try {
             if (!drive.getProxy().isActive()) return;
 

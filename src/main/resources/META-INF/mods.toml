@@ -1,0 +1,39 @@
+modLoader="javafml"
+loaderVersion="[36,)"
+license="All Rights Reserved"
+[[mods]]
+modId="botania_applie"
+version="${version}"
+displayName="Botania Applie"
+authors="Nyonio"
+description="Store and transfer Botania mana and bridge AE2 channels with channel sparks."
+[[dependencies.botania_applie]]
+modId="forge"
+mandatory=true
+versionRange="[36.2.34,37)"
+ordering="NONE"
+side="BOTH"
+[[dependencies.botania_applie]]
+modId="minecraft"
+mandatory=true
+versionRange="[1.16.5,1.17)"
+ordering="NONE"
+side="BOTH"
+[[dependencies.botania_applie]]
+modId="botania"
+mandatory=true
+versionRange="[1.16.5-420,)"
+ordering="AFTER"
+side="BOTH"
+[[dependencies.botania_applie]]
+modId="appliedenergistics2"
+mandatory=true
+versionRange="[8.4.7,9)"
+ordering="AFTER"
+side="BOTH"
+[[dependencies.botania_applie]]
+modId="terminal_interaction_integration"
+mandatory=true
+versionRange="[1.2.4-1.16.5,1.3)"
+ordering="AFTER"
+side="BOTH"

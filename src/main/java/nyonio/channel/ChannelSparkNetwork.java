@@ -1,6 +1,6 @@
 package nyonio.channel;
 
-import appeng.api.AEApi;
+import appeng.core.Api;
 import appeng.api.networking.IGridHost;
 import appeng.api.networking.IGridNode;
 import appeng.api.networking.IGridConnection;
@@ -14,17 +14,17 @@ import appeng.api.util.DimensionalCoord;
 import appeng.me.GridConnection;
 import appeng.me.helpers.AENetworkProxy;
 import appeng.me.helpers.IGridProxyable;
-import appeng.tile.networking.TileController;
+import appeng.tile.networking.ControllerTileEntity;
 import net.minecraft.tileentity.TileEntity;
-import net.minecraft.util.EnumFacing;
+import net.minecraft.util.Direction;
 import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.world.World;
-import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
-import net.minecraftforge.fml.common.gameevent.TickEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.event.TickEvent;
 import nyonio.BotaniaApplie;
 import nyonio.ChannelSparkConfig;
 import nyonio.entity.EntityChannelSpark;
@@ -67,9 +67,9 @@ public final class ChannelSparkNetwork {
             new WeakHashMap<>();
 
     /** Deterministic AE2 controller-face order: +X,+Y,+Z,-X,-Y,-Z. */
-    private static final EnumFacing[] CHANNEL_DIRECTION_ORDER = {
-            EnumFacing.EAST, EnumFacing.UP, EnumFacing.SOUTH,
-            EnumFacing.WEST, EnumFacing.DOWN, EnumFacing.NORTH
+    private static final Direction[] CHANNEL_DIRECTION_ORDER = {
+            Direction.EAST, Direction.UP, Direction.SOUTH,
+            Direction.WEST, Direction.DOWN, Direction.NORTH
     };
 
     private ChannelSparkNetwork() {
@@ -145,9 +145,9 @@ public final class ChannelSparkNetwork {
         private static BlockPos bucketKey(EntityChannelSpark spark,
                                           int bucketSize) {
             return new BlockPos(
-                    (int) Math.floor(spark.posX / (double) bucketSize),
-                    (int) Math.floor(spark.posY / (double) bucketSize),
-                    (int) Math.floor(spark.posZ / (double) bucketSize));
+                    (int) Math.floor(spark.getPosX() / (double) bucketSize),
+                    (int) Math.floor(spark.getPosY() / (double) bucketSize),
+                    (int) Math.floor(spark.getPosZ() / (double) bucketSize));
         }
     }
 
@@ -247,15 +247,15 @@ public final class ChannelSparkNetwork {
     private static final class ProxyHost implements IGridProxyable {
         private final IGridNode anchor;
         private final DimensionalCoord location;
-        private final EnumSet<EnumFacing> connectableSides;
+        private final EnumSet<Direction> connectableSides;
         private AENetworkProxy proxy;
 
         private ProxyHost(IGridNode anchor, DimensionalCoord location,
-                          EnumSet<EnumFacing> connectableSides) {
+                          EnumSet<Direction> connectableSides) {
             this.anchor = anchor;
             this.location = location;
             this.connectableSides = connectableSides == null
-                    ? EnumSet.noneOf(EnumFacing.class)
+                    ? EnumSet.noneOf(Direction.class)
                     : EnumSet.copyOf(connectableSides);
         }
 
@@ -272,6 +272,9 @@ public final class ChannelSparkNetwork {
         public DimensionalCoord getLocation() {
             return location;
         }
+
+        @Override
+        public void saveChanges() {}
 
         @Override
         public void gridChanged() {
@@ -355,18 +358,18 @@ public final class ChannelSparkNetwork {
                     new DimensionalCoord(world, attachedPos.up());
 
             ProxyHost innerHost = new ProxyHost(this.anchor, location,
-                    EnumSet.noneOf(EnumFacing.class));
+                    EnumSet.noneOf(Direction.class));
             this.innerProxy = new AENetworkProxy(innerHost,
                     "botania_applie_channel_spark_inner", ItemStack.EMPTY, false);
             innerHost.setProxy(this.innerProxy);
             this.innerProxy.setFlags(GridFlags.REQUIRE_CHANNEL,
                     GridFlags.COMPRESSED_CHANNEL);
-            this.innerProxy.setValidSides(EnumSet.noneOf(EnumFacing.class));
+            this.innerProxy.setValidSides(EnumSet.noneOf(Direction.class));
 
             ProxyHost outerHost = new ProxyHost(this.anchor, location,
                     endpoint != null && endpoint.controllerFace
-                            ? EnumSet.noneOf(EnumFacing.class)
-                            : EnumSet.of(EnumFacing.DOWN));
+                            ? EnumSet.noneOf(Direction.class)
+                            : EnumSet.of(Direction.DOWN));
             this.outerProxy = new AENetworkProxy(outerHost,
                     "botania_applie_channel_spark_outer", ItemStack.EMPTY, true);
             outerHost.setProxy(this.outerProxy);
@@ -377,8 +380,8 @@ public final class ChannelSparkNetwork {
              this.outerProxy.setFlags(GridFlags.DENSE_CAPACITY,
                      GridFlags.CANNOT_CARRY_COMPRESSED);
             this.outerProxy.setValidSides(endpoint != null && endpoint.controllerFace
-                    ? EnumSet.noneOf(EnumFacing.class)
-                    : EnumSet.of(EnumFacing.DOWN));
+                    ? EnumSet.noneOf(Direction.class)
+                    : EnumSet.of(Direction.DOWN));
 
             this.innerProxy.onReady();
             this.outerProxy.onReady();
@@ -403,14 +406,14 @@ public final class ChannelSparkNetwork {
                     || controllerLocation == null) {
                 return null;
             }
-            EnumFacing outward = face.getFacing();
+            Direction outward = face.getFacing();
             BlockPos position = new BlockPos(
-                    controllerLocation.x + outward.getFrontOffsetX(),
-                    controllerLocation.y + outward.getFrontOffsetY(),
-                    controllerLocation.z + outward.getFrontOffsetZ());
+                    controllerLocation.x + outward.getXOffset(),
+                    controllerLocation.y + outward.getYOffset(),
+                    controllerLocation.z + outward.getZOffset());
             DimensionalCoord location = new DimensionalCoord(
                     controllerLocation.getWorld(), position);
-            EnumSet<EnumFacing> sides = EnumSet.of(outward.getOpposite());
+            EnumSet<Direction> sides = EnumSet.of(outward.getOpposite());
             ProxyHost host = new ProxyHost(this.anchor, location, sides);
             AENetworkProxy proxy = new AENetworkProxy(host,
                     "botania_applie_channel_spark_channel_" + suffix,
@@ -432,14 +435,14 @@ public final class ChannelSparkNetwork {
                     || controllerLocation == null) {
                 return null;
             }
-            EnumFacing outward = face.getFacing();
+            Direction outward = face.getFacing();
             BlockPos position = new BlockPos(
-                    controllerLocation.x + outward.getFrontOffsetX(),
-                    controllerLocation.y + outward.getFrontOffsetY(),
-                    controllerLocation.z + outward.getFrontOffsetZ());
+                    controllerLocation.x + outward.getXOffset(),
+                    controllerLocation.y + outward.getYOffset(),
+                    controllerLocation.z + outward.getZOffset());
             DimensionalCoord location = new DimensionalCoord(
                     controllerLocation.getWorld(), position);
-            EnumSet<EnumFacing> sides = EnumSet.of(outward.getOpposite());
+            EnumSet<Direction> sides = EnumSet.of(outward.getOpposite());
             ProxyHost host = new ProxyHost(this.anchor, location, sides);
             AENetworkProxy proxy = new AENetworkProxy(host,
                     "botania_applie_channel_spark_outer_" + suffix,
@@ -471,12 +474,12 @@ public final class ChannelSparkNetwork {
                 return true;
             }
             try {
-                // TileController creates its physical connections from the
+                // ControllerTileEntity creates its physical connections from the
                 // adjacent node toward the controller.  Keep the same
-                // orientation here: TileController is CANNOT_CARRY, so
+                // orientation here: ControllerTileEntity is CANNOT_CARRY, so
                 // creating controller -> proxy makes the channel path stop at
                 // the connection and the synthetic channel never activates.
-                // Match TileController.findConnections(): the adjacent
+                // Match ControllerTileEntity.findConnections(): the adjacent
                 // synthetic node is the connection source and the controller
                 // is the destination. This preserves the controller route
                 // used by AE2's channel pathing.
@@ -599,7 +602,7 @@ public final class ChannelSparkNetwork {
             }
 
             List<AEPartLocation> unusedFaces = new ArrayList<>();
-            for (EnumFacing facing : CHANNEL_DIRECTION_ORDER) {
+            for (Direction facing : CHANNEL_DIRECTION_ORDER) {
                 AEPartLocation face = AEPartLocation.fromFacing(facing);
                 if (!isControllerFaceUsed(controller, face)) {
                     unusedFaces.add(face);
@@ -731,10 +734,10 @@ public final class ChannelSparkNetwork {
 
         private void destroyControllerInputs() {
             for (AENetworkProxy proxy : controllerChannelProxies) {
-                proxy.invalidate();
+                proxy.remove();
             }
             for (AENetworkProxy proxy : controllerOuterProxies) {
-                proxy.invalidate();
+                proxy.remove();
             }
             controllerChannelProxies.clear();
             controllerOuterProxies.clear();
@@ -761,17 +764,17 @@ public final class ChannelSparkNetwork {
         private void destroy() {
             destroyConnections(attachments);
             for (AENetworkProxy proxy : controllerChannelProxies) {
-                proxy.invalidate();
+                proxy.remove();
             }
             for (AENetworkProxy proxy : controllerOuterProxies) {
-                proxy.invalidate();
+                proxy.remove();
             }
             controllerChannelProxies.clear();
             controllerOuterProxies.clear();
             controllerFaces.clear();
             nextControllerFace = 0;
-            outerProxy.invalidate();
-            innerProxy.invalidate();
+            outerProxy.remove();
+            innerProxy.remove();
         }
     }
 
@@ -798,7 +801,7 @@ public final class ChannelSparkNetwork {
         return fallback;
     }
 
-    private static EnumFacing getProxyAttachmentFace(BridgeEndpoint endpoint,
+    private static Direction getProxyAttachmentFace(BridgeEndpoint endpoint,
                                                        EntityChannelSpark spark) {
         // The controller face is the logical channel allocator, not the
         // physical location of the spark. Geometry must follow the actual
@@ -814,7 +817,7 @@ public final class ChannelSparkNetwork {
                 && endpoint.direction.getFacing() != null) {
             return endpoint.direction.getFacing();
         }
-        return EnumFacing.UP;
+        return Direction.UP;
     }
 
     private static AEPartLocation getInnerConnectionDirection(
@@ -885,7 +888,7 @@ public final class ChannelSparkNetwork {
         }
         AxisAlignedBB bounds = new AxisAlignedBB(blockPos, blockPos.add(1, 1, 1));
         for (EntityChannelSpark spark : world.getEntitiesWithinAABB(EntityChannelSpark.class, bounds)) {
-            if (!spark.isDead && blockPos.equals(spark.getContainingBlock())) {
+            if (!spark.removed && blockPos.equals(spark.getContainingBlock())) {
                 return true;
             }
         }
@@ -893,14 +896,14 @@ public final class ChannelSparkNetwork {
     }
 
     public static boolean isPrimaryInBlock(EntityChannelSpark spark) {
-        if (spark == null || spark.isDead || spark.world == null) {
+        if (spark == null || spark.removed || spark.world == null) {
             return false;
         }
         BlockPos blockPos = spark.getContainingBlock();
         AxisAlignedBB bounds = new AxisAlignedBB(blockPos, blockPos.add(1, 1, 1));
         EntityChannelSpark first = null;
         for (EntityChannelSpark candidate : spark.world.getEntitiesWithinAABB(EntityChannelSpark.class, bounds)) {
-            if (candidate.isDead || !blockPos.equals(candidate.getContainingBlock())) {
+            if (candidate.removed || !blockPos.equals(candidate.getContainingBlock())) {
                 continue;
             }
             if (first == null || isEarlier(candidate, first)) {
@@ -925,7 +928,7 @@ public final class ChannelSparkNetwork {
     private static boolean isHubLink(EntityChannelSpark first,
                                      EntityChannelSpark second) {
         return first != null && second != null && first != second
-                && !first.isDead && !second.isDead
+                && !first.removed && !second.removed
                 && first.world != null && first.world == second.world
                 && isPrimaryInBlock(first) && isPrimaryInBlock(second);
     }
@@ -940,7 +943,7 @@ public final class ChannelSparkNetwork {
             return main;
         }
         for (EntityChannelSpark candidate : nearby) {
-            if (candidate == null || candidate.isDead || candidate.world != source.world
+            if (candidate == null || candidate.removed || candidate.world != source.world
                     || !candidate.isMainChannelSpark()
                     || !hasControllerEndpoint(candidate)
                     || !isPrimaryInBlock(candidate)
@@ -975,7 +978,7 @@ public final class ChannelSparkNetwork {
         }
         IGridNode sourceNode = getSparkEndpointNode(main);
         for (EntityChannelSpark candidate : nearby) {
-            if (candidate == null || candidate == main || candidate.isDead
+            if (candidate == null || candidate == main || candidate.removed
                     || candidate.world != main.world
                     || candidate.isMainChannelSpark()
                     || !isPrimaryInBlock(candidate)
@@ -1146,7 +1149,7 @@ public final class ChannelSparkNetwork {
         return endpoints;
     }
 
-    public static void showNetwork(EntityPlayer player, EntityChannelSpark source) {
+    public static void showNetwork(PlayerEntity player, EntityChannelSpark source) {
         if (player == null || source == null || source.world == null || source.world.isRemote) {
             return;
         }
@@ -1159,7 +1162,7 @@ public final class ChannelSparkNetwork {
             EntityChannelSpark current = queue.get(index);
             for (Link link : current.getLinks().values()) {
                 EntityChannelSpark other = link.other;
-                if (other == null || other.isDead || !isPrimaryInBlock(other)
+                if (other == null || other.removed || !isPrimaryInBlock(other)
                         || !isHubLink(current, other)
                         || !visited.add(other.getUniqueID())) {
                     continue;
@@ -1189,7 +1192,7 @@ public final class ChannelSparkNetwork {
         if (state == null || state.sparks.isEmpty()) {
             return false;
         }
-        long currentTick = world.getTotalWorldTime();
+        long currentTick = world.getGameTime();
         if (state.lastReconcileTick == currentTick) {
             return false;
         }
@@ -1219,7 +1222,7 @@ public final class ChannelSparkNetwork {
                 state.sparks.iterator();
         while (sparkIterator.hasNext()) {
             EntityChannelSpark spark = sparkIterator.next();
-            if (spark == null || spark.isDead || spark.world != world) {
+            if (spark == null || spark.removed || spark.world != world) {
                 sparkIterator.remove();
             } else {
                 sparks.add(spark);
@@ -1247,7 +1250,7 @@ public final class ChannelSparkNetwork {
 
         Set<UUID> visited = new HashSet<>();
         for (EntityChannelSpark spark : sparks) {
-            if (spark.isDead || !isPrimaryInBlock(spark)
+            if (spark.removed || !isPrimaryInBlock(spark)
                     || !visited.add(spark.getUniqueID())) {
                 continue;
             }
@@ -1264,14 +1267,14 @@ public final class ChannelSparkNetwork {
     private static void reconcileNearbyLogicalLinks(
             EntityChannelSpark source, List<EntityChannelSpark> nearby,
             double maxDistance) {
-        if (source == null || source.isDead || source.world == null) {
+        if (source == null || source.removed || source.world == null) {
             return;
         }
 
         Set<UUID> desired = new HashSet<>();
         if (nearby != null) {
             for (EntityChannelSpark candidate : nearby) {
-                if (candidate == null || candidate == source || candidate.isDead
+                if (candidate == null || candidate == source || candidate.removed
                         || candidate.world != source.world
                         || !isPrimaryInBlock(candidate)
                         || source.getDistanceSq(candidate) > maxDistance
@@ -1323,7 +1326,7 @@ public final class ChannelSparkNetwork {
         List<Link> links = new ArrayList<>(spark.getLinks().values());
         for (Link link : links) {
             EntityChannelSpark other = link.other;
-            if (other == null || other.isDead || other.world != spark.world
+            if (other == null || other.removed || other.world != spark.world
                     || spark.getDistanceSq(other) > maxDistance
                     || !isPrimaryInBlock(other)
                     || !isHubLink(spark, other)) {
@@ -1371,8 +1374,11 @@ public final class ChannelSparkNetwork {
         EntityChannelSpark main = null;
         for (EntityChannelSpark candidate : network) {
             if (candidate != null && candidate.isMainChannelSpark()
-                    && hasControllerEndpoint(candidate)
-                    && (main == null || isEarlier(candidate, main))) {
+                    && hasUsableEndpoint(candidate)
+                    && (main == null
+                        || (hasControllerEndpoint(candidate) && !hasControllerEndpoint(main))
+                        || (hasControllerEndpoint(candidate) == hasControllerEndpoint(main)
+                            && isEarlier(candidate, main)))) {
                 main = candidate;
             }
         }
@@ -1536,9 +1542,9 @@ public final class ChannelSparkNetwork {
     }
 
     private static boolean hasControllerEndpoint(EntityChannelSpark spark) {
-return spark != null && !spark.isDead && spark.world != null
+return spark != null && !spark.removed && spark.world != null
                 && spark.getTargetPos() != null
-                && spark.world.getTileEntity(spark.getTargetPos()) instanceof TileController;
+                && spark.world.getTileEntity(spark.getTargetPos()) instanceof ControllerTileEntity;
     }
 
     /**
@@ -1570,7 +1576,7 @@ if (network == null || network.isEmpty()) {
 
     private static List<EntityChannelSpark> collectLogicalNetwork(EntityChannelSpark source) {
         List<EntityChannelSpark> network = new ArrayList<>();
-        if (source == null || source.isDead || source.world == null) {
+        if (source == null || source.removed || source.world == null) {
             return network;
         }
 
@@ -1580,14 +1586,14 @@ if (network == null || network.isEmpty()) {
         visited.add(source.getUniqueID());
         for (int index = 0; index < queue.size(); index++) {
             EntityChannelSpark current = queue.get(index);
-            if (current == null || current.isDead || current.world != source.world
+            if (current == null || current.removed || current.world != source.world
                     || !isPrimaryInBlock(current)) {
                 continue;
             }
             network.add(current);
             for (Link link : current.getLinks().values()) {
                 EntityChannelSpark other = link.other;
-                if (other != null && !other.isDead && other.world == source.world
+                if (other != null && !other.removed && other.world == source.world
                         && isPrimaryInBlock(other) && isHubLink(current, other)
                         && visited.add(other.getUniqueID())) {
                     queue.add(other);
@@ -1684,7 +1690,7 @@ private static BridgeBuild createGridConnectionsIfPossible(
             EntityChannelSpark first, EntityChannelSpark second,
             BridgeProxy mainProxy) {
         BridgeBuild build = new BridgeBuild();
-        if (mainProxy == null || mainProxy.controllerChannelCount() <= 0) {
+        if (mainProxy == null) {
             return build;
         }
         List<BridgeEndpoint> secondEndpoints =
@@ -1698,7 +1704,8 @@ private static BridgeBuild createGridConnectionsIfPossible(
         // deterministic +X,+Y,+Z,-X,-Y,-Z order. The channel edge is built
         // first so AE2 allocates a real compressed-channel route between the
         // two network-facing REQUIRE_CHANNEL nodes.
-        AENetworkProxy inputOuter = mainProxy.acquireControllerOuterProxy();
+        AENetworkProxy inputOuter = mainProxy.controllerChannelCount() > 0
+                ? mainProxy.acquireControllerOuterProxy() : mainProxy.outerProxy;
         if (inputOuter == null || inputOuter.getNode() == null) {
             return build;
         }
@@ -1895,7 +1902,7 @@ private static boolean attachOutputProxy(BridgeProxy proxy,
             }
         } catch (Throwable ignored) {
         }
-        EnumFacing facing = face.getFacing();
+        Direction facing = face.getFacing();
         try {
             for (IGridConnection connection : controller.getConnections()) {
                 IGridNode other = connection.getOtherSide(controller);
@@ -1910,11 +1917,11 @@ private static boolean attachOutputProxy(BridgeProxy proxy,
                     DimensionalCoord otherLocation =
                             other.getGridBlock().getLocation();
                     if (otherLocation.x == controllerLocation.x
-                                + facing.getFrontOffsetX()
+                                + facing.getXOffset()
                             && otherLocation.y == controllerLocation.y
-                                + facing.getFrontOffsetY()
+                                + facing.getYOffset()
                             && otherLocation.z == controllerLocation.z
-                                + facing.getFrontOffsetZ()) {
+                                + facing.getZOffset()) {
                         return true;
                     }
                 }
@@ -1926,7 +1933,7 @@ private static boolean attachOutputProxy(BridgeProxy proxy,
 
     private static int countUnusedControllerFaces(IGridNode controller) {
         int count = 0;
-        for (EnumFacing facing : CHANNEL_DIRECTION_ORDER) {
+        for (Direction facing : CHANNEL_DIRECTION_ORDER) {
             if (!isControllerFaceUsed(controller, AEPartLocation.fromFacing(facing))) {
                 count++;
             }
@@ -1951,7 +1958,7 @@ private static boolean attachOutputProxy(BridgeProxy proxy,
             // ordinary graph edge, while AE2's grid API creates the P2P edge
             // that carries the compressed-channel path between the two outer
             // proxies.
-            IGridConnection connection = AEApi.instance().grid()
+            IGridConnection connection = Api.instance().grid()
                     .createGridConnection(first, second);
             registerConnection(connection);
             repathAfterConnection(first, second);
@@ -2093,9 +2100,9 @@ private static boolean attachOutputProxy(BridgeProxy proxy,
         }
 
         BlockPos target = spark.getTargetPos();
-        double dx = spark.posX - (target.getX() + 0.5D);
-        double dy = spark.posY - (target.getY() + 0.5D);
-        double dz = spark.posZ - (target.getZ() + 0.5D);
+        double dx = spark.getPosX() - (target.getX() + 0.5D);
+        double dy = spark.getPosY() - (target.getY() + 0.5D);
+        double dz = spark.getPosZ() - (target.getZ() + 0.5D);
         double ax = Math.abs(dx);
         double ay = Math.abs(dy);
         double az = Math.abs(dz);
@@ -2233,8 +2240,8 @@ private static boolean attachOutputProxy(BridgeProxy proxy,
         TileEntity tile = world.getTileEntity(pos);
         if (tile instanceof IGridHost) {
             IGridHost host = (IGridHost) tile;
-            boolean controller = host instanceof TileController;
-            for (EnumFacing facing : CHANNEL_DIRECTION_ORDER) {
+            boolean controller = host instanceof ControllerTileEntity;
+            for (Direction facing : CHANNEL_DIRECTION_ORDER) {
                 AEPartLocation direction = AEPartLocation.fromFacing(facing);
                 IGridNode node = null;
                 try {
@@ -2346,7 +2353,7 @@ private static boolean attachOutputProxy(BridgeProxy proxy,
         // If the clicked block is a machine/interface node that cannot carry
         // a path itself, accept only a directly adjacent cable bus. This keeps
         // the bridge local and avoids changing an unrelated part of the grid.
-        for (EnumFacing facing : EnumFacing.values()) {
+        for (Direction facing : Direction.values()) {
             TileEntity adjacent = world.getTileEntity(pos.offset(facing));
             if (adjacent == null) {
                 continue;
@@ -2612,7 +2619,7 @@ private static IGridNode findCarryingGridNodeOnHost(IGridHost host) {
     /**
      * Selects a safe AE2 endpoint for a wireless bridge. Cable nodes expose
      * their connections as physical sides. Adding an INTERNAL GridConnection
-     * to one of those nodes makes PartDenseCable treat INTERNAL as a side and
+     * to one of those nodes makes DenseCablePart treat INTERNAL as a side and
      * eventually call getFacing() on null while building collision boxes.
      * Use another carrying node from the same grid instead; it preserves the
      * network without changing any cable's physical connection set.
@@ -2658,7 +2665,7 @@ private static IGridNode findNonCableCarryingNodeFromGrid(IGridNode endpoint) {
                 return false;
             }
             String name = machine.getClass().getName();
-            return machine instanceof appeng.tile.networking.TileCableBus
+            return machine instanceof appeng.tile.networking.CableBusTileEntity
                     || name.contains("CableBus")
                     || name.contains("Cable");
         } catch (Throwable ignored) {
@@ -2695,16 +2702,16 @@ private static IGridNode findNonCableCarryingNodeFromGrid(IGridNode endpoint) {
             logConnectionFailure("GridConnection public factory", first, second, error);
         }
 
-        // AEApi's convenience method creates an INTERNAL connection on this
+        // Api's convenience method creates an INTERNAL connection on this
         // AE2 build. It is safe only when no cable endpoint needs a physical
         // direction; using it for a cable would reintroduce a null facing in
-        // PartDenseCable.isDense().
+        // DenseCablePart.isDense().
         if (direction != AEPartLocation.INTERNAL) {
             return null;
         }
 
         try {
-            IGridConnection connection = AEApi.instance().grid().createGridConnection(first, second);
+            IGridConnection connection = Api.instance().grid().createGridConnection(first, second);
             registerConnection(connection);
             repathAfterConnection(first, second);
             return connection;

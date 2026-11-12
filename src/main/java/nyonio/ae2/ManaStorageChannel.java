@@ -5,9 +5,9 @@ import java.io.IOException;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
-import io.netty.buffer.ByteBuf;
+import net.minecraft.network.PacketBuffer;
 import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.nbt.CompoundNBT;
 import appeng.api.storage.IStorageChannel;
 import appeng.api.storage.data.IItemList;
 
@@ -42,14 +42,14 @@ public class ManaStorageChannel implements IStorageChannel<ManaStack> {
 
     @Nullable
     @Override
-    public ManaStack readFromPacket(@Nonnull ByteBuf input) throws IOException {
+    public ManaStack readFromPacket(@Nonnull PacketBuffer input) {
         long amount = input.readLong();
         return new ManaStack(amount);
     }
 
     @Nullable
     @Override
-    public ManaStack createFromNBT(@Nonnull NBTTagCompound nbt) {
+    public ManaStack createFromNBT(@Nonnull CompoundNBT nbt) {
         long amount = nbt.getLong("mana");
         return new ManaStack(amount);
     }

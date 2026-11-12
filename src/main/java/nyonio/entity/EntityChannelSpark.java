@@ -1,216 +1,53 @@
 package nyonio.entity;
-
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.EntityType;
+import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NBTTagCompound;
-import net.minecraft.util.EnumActionResult;
-import net.minecraft.util.EnumHand;
-import net.minecraft.util.math.AxisAlignedBB;
+import net.minecraft.nbt.CompoundNBT;
+import net.minecraft.network.IPacket;
+import net.minecraft.util.ActionResultType;
+import net.minecraft.util.Hand;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.RayTraceResult;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.util.math.vector.Vector3d;
 import net.minecraft.world.World;
+import net.minecraftforge.fml.network.NetworkHooks;
+import nyonio.BotaniaApplie;
 import nyonio.channel.ChannelSparkNetwork;
-import vazkii.botania.common.item.ItemTwigWand;
+import vazkii.botania.common.entity.EntitySparkBase;
 import vazkii.botania.common.item.ModItems;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
-
-public class EntityChannelSpark extends Entity {
-    private static final String TARGET_PRESENT = "ChannelSparkTargetPresent";
-    private static final String TARGET_X = "ChannelSparkTargetX";
-    private static final String TARGET_Y = "ChannelSparkTargetY";
-    private static final String TARGET_Z = "ChannelSparkTargetZ";
-    private static final String PLACEMENT_ORDER = "ChannelSparkPlacementOrder";
-
-    private static long placementSequence;
-
-    private BlockPos targetPos;
-    private long placementOrder;
-    private long lastWandInteractionTick = Long.MIN_VALUE;
-    private UUID lastWandInteractor;
-    private final Map<UUID, ChannelSparkNetwork.Link> links = new HashMap<>();
-
-    public EntityChannelSpark(World world) {
-        super(world);
-        isImmuneToFire = true;
-        setNoGravity(true);
-        ChannelSparkNetwork.registerSpark(this);
-    }
-
-    public EntityChannelSpark(World world, double x, double y, double z) {
-        this(world);
-        setPosition(x, y, z);
-    }
-
-    public boolean isMainChannelSpark() {
-        return false;
-    }
-
-    public boolean hasTarget() {
-        return targetPos != null;
-    }
-
-    public BlockPos getTargetPos() {
-        return targetPos;
-    }
-
-    public void setTarget(BlockPos targetPos) {
-        this.targetPos = targetPos;
-    }
-
-    public BlockPos getContainingBlock() {
-        return new BlockPos(MathHelper.floor(posX), MathHelper.floor(posY), MathHelper.floor(posZ));
-    }
-
-    public long getPlacementOrder() {
-        return placementOrder;
-    }
-
-    public Map<UUID, ChannelSparkNetwork.Link> getLinks() {
-        return links;
-    }
-
-    @Override
-    protected void entityInit() {
-        // Use the same practical hit area as Botania's spark. The entity has
-        // no physical collision box, but a tiny 0.1-wide selection box makes
-        // the forest wand ray trace miss it almost every time.
-        setSize(0.1F, 0.5F);
-        placementOrder = nextPlacementOrder();
-    }
-
-    private static synchronized long nextPlacementOrder() {
-        return ++placementSequence;
-    }
-
-    private static synchronized void observePlacementOrder(long order) {
-        if (order > placementSequence) {
-            placementSequence = order;
-        }
-    }
-
-    @Override
-    protected void readEntityFromNBT(NBTTagCompound compound) {
-        if (compound.hasKey(PLACEMENT_ORDER)) {
-            placementOrder = compound.getLong(PLACEMENT_ORDER);
-            observePlacementOrder(placementOrder);
-        }
-        if (compound.getBoolean(TARGET_PRESENT)) {
-            targetPos = new BlockPos(compound.getInteger(TARGET_X), compound.getInteger(TARGET_Y), compound.getInteger(TARGET_Z));
-        } else {
-            targetPos = null;
-        }
-    }
-
-    @Override
-    protected void writeEntityToNBT(NBTTagCompound compound) {
-        compound.setLong(PLACEMENT_ORDER, placementOrder);
-        compound.setBoolean(TARGET_PRESENT, targetPos != null);
-        if (targetPos != null) {
-            compound.setInteger(TARGET_X, targetPos.getX());
-            compound.setInteger(TARGET_Y, targetPos.getY());
-            compound.setInteger(TARGET_Z, targetPos.getZ());
-        }
-    }
-
-    @Override
-    public void onUpdate() {
-        super.onUpdate();
-    }
-
-    @Override
-    public void setDead() {
-        if (!world.isRemote) {
-            ChannelSparkNetwork.clear(this);
-            ChannelSparkNetwork.unregisterSpark(this);
-        }
-        super.setDead();
-    }
-
-    @Override
-    public ItemStack getPickedResult(net.minecraft.util.math.RayTraceResult target) {
-return new ItemStack(isMainChannelSpark()
-                ? nyonio.BotaniaApplie.mainChannelSpark
-                : nyonio.BotaniaApplie.channelSpark);
-    }
-
-    @Override
-    public boolean canBeCollidedWith() {
-        // The spark remains non-solid because its collision box is null, but
-        // must be selectable for the forest wand's entity interaction.
+import java.util.*;
+public class EntityChannelSpark extends EntitySparkBase {
+    private static long sequence;
+    private long placementOrder=++sequence;
+    private BlockPos target;
+    private long lastWandTick=Long.MIN_VALUE;
+    private UUID lastPlayer;
+    private final Map<UUID,ChannelSparkNetwork.Link> links=new HashMap<>();
+    public EntityChannelSpark(EntityType<? extends EntityChannelSpark> type,World world) { super(type,world);setNoGravity(true); }
+    public EntityChannelSpark(World world,double x,double y,double z) { this(BotaniaApplie.CHANNEL_SPARK,world);setPosition(x,y,z); }
+    public boolean isMainChannelSpark() { return false; }
+    public boolean hasTarget() { return target!=null; }
+    public BlockPos getTargetPos() { return target; }
+    public void setTarget(BlockPos pos) { target=pos.toImmutable(); }
+    public BlockPos getContainingBlock() { return getPosition(); }
+    public long getPlacementOrder() { return placementOrder; }
+    public Map<UUID,ChannelSparkNetwork.Link> getLinks() { return links; }
+    @Override public void tick() { super.tick();if(!world.isRemote && ticksExisted==1) ChannelSparkNetwork.registerSpark(this); }
+    @Override protected void readAdditional(CompoundNBT tag) { super.readAdditional(tag);if(tag.contains("ChannelSparkPlacementOrder")) placementOrder=tag.getLong("ChannelSparkPlacementOrder");sequence=Math.max(sequence,placementOrder);target=tag.getBoolean("ChannelSparkTargetPresent")?new BlockPos(tag.getInt("ChannelSparkTargetX"),tag.getInt("ChannelSparkTargetY"),tag.getInt("ChannelSparkTargetZ")):null; }
+    @Override protected void writeAdditional(CompoundNBT tag) { super.writeAdditional(tag);tag.putLong("ChannelSparkPlacementOrder",placementOrder);tag.putBoolean("ChannelSparkTargetPresent",target!=null);if(target!=null) {tag.putInt("ChannelSparkTargetX",target.getX());tag.putInt("ChannelSparkTargetY",target.getY());tag.putInt("ChannelSparkTargetZ",target.getZ());} }
+    @Override public void remove() { if(!world.isRemote) {ChannelSparkNetwork.clear(this);ChannelSparkNetwork.unregisterSpark(this);}super.remove(); }
+    @Override public ItemStack getPickedResult(RayTraceResult hit) { return new ItemStack(isMainChannelSpark()?BotaniaApplie.mainChannelSpark:BotaniaApplie.channelSpark); }
+    @Override public boolean canBePushed() { return false; }
+    @Override public float getCollisionBorderSize() { return 0.2F; }
+    @Override public ActionResultType applyPlayerInteraction(PlayerEntity player,Vector3d hit,Hand hand) { return interactWithTwigWand(player,hand)?ActionResultType.SUCCESS:ActionResultType.PASS; }
+    @Override public ActionResultType processInitialInteract(PlayerEntity player,Hand hand) { return interactWithTwigWand(player,hand)?ActionResultType.SUCCESS:ActionResultType.PASS; }
+    public boolean interactWithTwigWand(PlayerEntity player,Hand hand) {
+        if(player.getHeldItem(hand).getItem()!=ModItems.twigWand) return false;
+        if(world.isRemote) {player.swingArm(hand);return true;}
+        if(lastWandTick==world.getGameTime() && player.getUniqueID().equals(lastPlayer)) return true;
+        lastWandTick=world.getGameTime();lastPlayer=player.getUniqueID();
+        if(player.isSneaking()) {entityDropItem(getPickedResult(null));remove();} else ChannelSparkNetwork.showNetwork(player,this);
         return true;
     }
-
-    @Override
-    public AxisAlignedBB getCollisionBoundingBox() {
-        // Selection uses getEntityBoundingBox(); the collision box itself is
-        // empty so the spark never becomes a physical obstacle.
-        return null;
-    }
-
-    @Override
-    public float getCollisionBorderSize() {
-        return 0.2F;
-    }
-
-    @Override
-    public boolean canBePushed() {
-        return false;
-    }
-
-    @Override
-    public EnumActionResult applyPlayerInteraction(EntityPlayer player, Vec3d hitVector, EnumHand hand) {
-        return interactWithTwigWand(player, hand)
-                ? EnumActionResult.SUCCESS : EnumActionResult.PASS;
-    }
-
-    @Override
-    public boolean processInitialInteract(EntityPlayer player, EnumHand hand) {
-        return interactWithTwigWand(player, hand);
-    }
-
-    /**
-     * Handles the same forest-wand interaction as Botania's EntitySpark.
-     * Forge can deliver an entity-interaction event before the normal entity
-     * callback, so this method is shared by both entry points and suppresses
-     * an accidental double action in the same server tick.
-     */
-    public boolean interactWithTwigWand(EntityPlayer player, EnumHand hand) {
-        if (player == null || hand == null) {
-            return false;
-        }
-        ItemStack stack = player.getHeldItem(hand);
-        if (stack.isEmpty() || stack.getItem() != ModItems.twigWand) {
-            return false;
-        }
-
-        if (world.isRemote) {
-            player.swingArm(hand);
-            return true;
-        }
-
-        long tick = world.getTotalWorldTime();
-        UUID playerId = player.getUniqueID();
-        if (lastWandInteractionTick == tick
-                && playerId != null && playerId.equals(lastWandInteractor)) {
-            return true;
-        }
-        lastWandInteractionTick = tick;
-        lastWandInteractor = playerId;
-
-        if (player.isSneaking()) {
-            entityDropItem(new ItemStack(isMainChannelSpark()
-                    ? nyonio.BotaniaApplie.mainChannelSpark
-                    : nyonio.BotaniaApplie.channelSpark), 0.0F);
-            setDead();
-        } else {
-            ChannelSparkNetwork.showNetwork(player, this);
-        }
-        return true;
-    }
-
+    @Override public IPacket<?> createSpawnPacket() { return NetworkHooks.getEntitySpawningPacket(this); }
 }

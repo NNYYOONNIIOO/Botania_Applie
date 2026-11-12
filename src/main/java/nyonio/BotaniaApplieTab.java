@@ -1,18 +1,8 @@
 package nyonio;
-
-import net.minecraft.creativetab.CreativeTabs;
+import net.minecraft.item.ItemGroup;
 import net.minecraft.item.ItemStack;
-
-public class BotaniaApplieTab extends CreativeTabs {
-
+public final class BotaniaApplieTab extends ItemGroup {
     public static final BotaniaApplieTab INSTANCE = new BotaniaApplieTab();
-
-    private BotaniaApplieTab() {
-        super("botania_applie");
-    }
-
-    @Override
-    public ItemStack getTabIconItem() {
-        return new ItemStack(BotaniaApplie.manaStorageCell16k);
-    }
+    private BotaniaApplieTab() { super(BotaniaApplie.MODID); }
+    @Override public ItemStack createIcon() { return new ItemStack(BotaniaApplie.fluixManaPoolItem); }
 }

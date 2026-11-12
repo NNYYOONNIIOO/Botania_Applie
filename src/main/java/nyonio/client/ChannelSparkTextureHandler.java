@@ -1,30 +1,26 @@
 package nyonio.client;
-
-import net.minecraft.util.ResourceLocation;
+import net.minecraft.client.renderer.texture.AtlasTexture;
+import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.TextureStitchEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
-import net.minecraftforge.fml.relauncher.Side;
-import net.minecraftforge.fml.relauncher.SideOnly;
+import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
+import net.minecraftforge.fml.client.registry.ClientRegistry;
+import net.minecraftforge.fml.client.registry.RenderingRegistry;
 import nyonio.BotaniaApplie;
-
-@SideOnly(Side.CLIENT)
-@Mod.EventBusSubscriber(modid = BotaniaApplie.MODID, value = Side.CLIENT)
+import nyonio.client.render.RenderChannelSpark;
+import vazkii.botania.client.render.tile.RenderTilePool;
+@Mod.EventBusSubscriber(modid=BotaniaApplie.MODID,bus=Mod.EventBusSubscriber.Bus.MOD,value=Dist.CLIENT)
 public final class ChannelSparkTextureHandler {
-    private static final ResourceLocation CHANNEL_SPARK_SPRITE =
-            new ResourceLocation(BotaniaApplie.MODID, "items/channel_spark");
-    private static final ResourceLocation MAIN_CHANNEL_SPARK_SPRITE =
-            new ResourceLocation(BotaniaApplie.MODID, "items/main_channel_spark");
-    private static final ResourceLocation BOTANIA_SPARK_SPRITE =
-            new ResourceLocation("botania", "items/spark");
-
-    private ChannelSparkTextureHandler() {
+    private ChannelSparkTextureHandler() {}
+    @SubscribeEvent public static void client(FMLClientSetupEvent e) {
+        RenderingRegistry.registerEntityRenderingHandler(BotaniaApplie.CHANNEL_SPARK,RenderChannelSpark::new);
+        RenderingRegistry.registerEntityRenderingHandler(BotaniaApplie.MAIN_CHANNEL_SPARK,RenderChannelSpark::new);
+        ClientRegistry.bindTileEntityRenderer(BotaniaApplie.FLUIX_POOL_TILE,RenderTilePool::new);
     }
-
-    @SubscribeEvent
-    public static void registerBotaniaSparkSprite(TextureStitchEvent.Pre event) {
-        event.getMap().registerSprite(CHANNEL_SPARK_SPRITE);
-        event.getMap().registerSprite(MAIN_CHANNEL_SPARK_SPRITE);
-        event.getMap().registerSprite(BOTANIA_SPARK_SPRITE);
+    @SubscribeEvent public static void stitch(TextureStitchEvent.Pre e) {
+        if(!e.getMap().getTextureLocation().equals(AtlasTexture.LOCATION_BLOCKS_TEXTURE))return;
+        e.addSprite(BotaniaApplie.id("items/channel_spark"));
+        e.addSprite(BotaniaApplie.id("items/main_channel_spark"));
     }
 }

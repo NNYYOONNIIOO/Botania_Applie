@@ -16,7 +16,7 @@ import java.util.EnumSet;
  * connection remains on the grid node, so pathing and channel accounting are
  * unchanged.
  */
-@Mixin(targets = "appeng.me.GridNode", remap = false)
+@Mixin(value = appeng.me.GridNode.class, remap = false)
 public abstract class MixinGridNodeConnectedSides {
     @Inject(method = "getConnectedSides", at = @At("RETURN"), cancellable = true)
     private void botaniaApplie$hideWirelessDirections(

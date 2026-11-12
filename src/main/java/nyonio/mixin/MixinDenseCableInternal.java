@@ -7,7 +7,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /** Prevents a wireless INTERNAL link from entering dense-cable geometry. */
-@Mixin(targets = "appeng.parts.networking.PartDenseCable", remap = false)
+@Mixin(value = appeng.parts.networking.DenseCablePart.class, remap = false)
 public abstract class MixinDenseCableInternal {
     @Inject(method = "isDense", at = @At("HEAD"), cancellable = true)
     private void botaniaApplie$ignoreInternal(AEPartLocation location,

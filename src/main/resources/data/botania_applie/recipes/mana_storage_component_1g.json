@@ -1,0 +1,31 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "ada",
+    "efe",
+    "aea"
+  ],
+  "key": {
+    "a": {
+      "item": "botania:mana_powder"
+    },
+    "d": {
+      "item": "appliedenergistics2:calculation_processor"
+    },
+    "e": {
+      "item": "botania_applie:mana_storage_component_256m"
+    },
+    "f": {
+      "item": "appliedenergistics2:quartz_glass"
+    }
+  },
+  "result": {
+    "item": "botania_applie:mana_storage_component_1g"
+  },
+  "conditions": [
+    {
+      "type": "botania_applie:config",
+      "option": "components"
+    }
+  ]
+}

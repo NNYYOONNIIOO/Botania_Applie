@@ -2,7 +2,7 @@ package nyonio.handler;
 
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
 import nyonio.BotaniaApplie;
 import nyonio.entity.EntityChannelSpark;
 import vazkii.botania.common.item.ModItems;
@@ -21,15 +21,15 @@ public final class ChannelSparkInteractionHandler {
     public static void onEntityInteract(PlayerInteractEvent.EntityInteract event) {
         if (event == null || event.isCanceled()
                 || !(event.getTarget() instanceof EntityChannelSpark)
-                || event.getEntityPlayer() == null
-                || event.getEntityPlayer().getHeldItem(event.getHand()).isEmpty()
-                || event.getEntityPlayer().getHeldItem(event.getHand()).getItem()
+                || event.getPlayer() == null
+                || event.getPlayer().getHeldItem(event.getHand()).isEmpty()
+                || event.getPlayer().getHeldItem(event.getHand()).getItem()
                 != ModItems.twigWand) {
             return;
         }
 
         EntityChannelSpark spark = (EntityChannelSpark) event.getTarget();
-        if (spark.interactWithTwigWand(event.getEntityPlayer(), event.getHand())) {
+        if (spark.interactWithTwigWand(event.getPlayer(), event.getHand())) {
             event.setCanceled(true);
         }
     }

@@ -1,85 +1,29 @@
 package nyonio.item;
-
 import appeng.api.config.Upgrades;
 import appeng.api.implementations.items.IUpgradeModule;
-import appeng.util.Platform;
 import net.minecraft.client.util.ITooltipFlag;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NBTTagCompound;
-import net.minecraft.nbt.NBTTagList;
+import net.minecraft.item.*;
+import net.minecraft.nbt.*;
+import net.minecraft.util.text.*;
 import net.minecraft.world.World;
-import net.minecraftforge.fml.relauncher.Side;
-import net.minecraftforge.fml.relauncher.SideOnly;
-import net.minecraft.util.text.translation.I18n;
 import nyonio.BotaniaApplie;
-
-import javax.annotation.Nullable;
 import java.util.List;
-
 public class ItemManaCard extends Item implements IUpgradeModule {
-
     private final int manaPerSecond;
-
-    public ItemManaCard(int manaPerSecond) {
-        this.setMaxStackSize(1);
-        this.manaPerSecond = manaPerSecond;
+    public ItemManaCard(int rate) { super(BotaniaApplie.properties().maxStackSize(1));manaPerSecond=rate; }
+    public int getManaPerSecond() { return manaPerSecond; }
+    public int getManaPerTick() { return manaPerSecond/20; }
+    @Override public Upgrades getType(ItemStack stack) { return Upgrades.CAPACITY; }
+    @Override public void addInformation(ItemStack stack,World world,List<ITextComponent> lines,ITooltipFlag flag) { lines.add(new TranslationTextComponent("botania_applie.tooltip.mana_card_rate",manaPerSecond)); }
+    public static int getTotalManaRate(ItemStack cell) {
+        if(cell.isEmpty() || !cell.hasTag()) return 0;
+        CompoundNBT tag=cell.getTag();
+        int total=0;
+        ListNBT cards=tag.getCompound("upgrades").getList("Items",10);
+        for(int i=0;i<cards.size();i++) total+=rate(cards.getCompound(i).getString("id"));
+        cards=tag.getList("manaCards",10);
+        for(int i=0;i<cards.size();i++) total+=rate(cards.getCompound(i).getString("id"));
+        return total;
     }
-
-    public int getManaPerSecond() {
-        return this.manaPerSecond;
-    }
-
-    public int getManaPerTick() {
-        return this.manaPerSecond / 20;
-    }
-
-    @Override
-    public Upgrades getType(ItemStack stack) {
-        return Upgrades.CAPACITY;
-    }
-
-    @Override
-    @SideOnly(Side.CLIENT)
-    public void addInformation(ItemStack stack, @Nullable World world, List<String> tooltip, ITooltipFlag flag) {
-        super.addInformation(stack, world, tooltip, flag);
-        tooltip.add(I18n.translateToLocalFormatted("botania_applie.tooltip.mana_card_rate", this.manaPerSecond));
-    }
-
-    public static int getTotalManaRate(ItemStack cellStack) {
-        int totalRate = 0;
-        if (cellStack == null || cellStack.isEmpty()) return 0;
-
-        NBTTagCompound tag = Platform.openNbtData(cellStack);
-        if (tag == null) return 0;
-
-        if (tag.hasKey("upgrades")) {
-            NBTTagCompound upgradesTag = tag.getCompoundTag("upgrades");
-            NBTTagList items = upgradesTag.getTagList("Items", 10);
-            for (int i = 0; i < items.tagCount(); i++) {
-                NBTTagCompound itemNbt = items.getCompoundTagAt(i);
-                String id = itemNbt.getString("id");
-                if (id.equals(BotaniaApplie.MODID + ":mana_card_basic")) {
-                    totalRate += 40;
-                } else if (id.equals(BotaniaApplie.MODID + ":mana_card_advanced")) {
-                    totalRate += 200;
-                }
-            }
-        }
-
-        if (tag.hasKey("manaCards")) {
-            NBTTagList cards = tag.getTagList("manaCards", 10);
-            for (int i = 0; i < cards.tagCount(); i++) {
-                NBTTagCompound cardNbt = cards.getCompoundTagAt(i);
-                String id = cardNbt.getString("id");
-                if (id.equals(BotaniaApplie.MODID + ":mana_card_basic")) {
-                    totalRate += 40;
-                } else if (id.equals(BotaniaApplie.MODID + ":mana_card_advanced")) {
-                    totalRate += 200;
-                }
-            }
-        }
-
-        return totalRate;
-    }
+    private static int rate(String id) { return id.equals("botania_applie:mana_card_basic")?40:id.equals("botania_applie:mana_card_advanced")?200:0; }
 }
