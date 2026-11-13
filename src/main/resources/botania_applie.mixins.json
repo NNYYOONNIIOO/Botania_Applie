@@ -8,11 +8,7 @@
     "MixinGridNodeConnectedSides",
     "MixinPartCableInternalChannels",
     "MixinDenseCableInternal",
-    "TilePoolManaAccessor",
-    "MixinFluidManaUpgrades",
-    "MixinFluidManaContainer",
-    "MixinFluidInterfaceTileDrops",
-    "MixinFluidInterfacePartDrops"
+    "TilePoolManaAccessor"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -7,7 +7,6 @@ import appeng.api.parts.*;
 import appeng.api.storage.IMEInventory;
 import appeng.api.util.AEPartLocation;
 import appeng.helpers.IInterfaceHost;
-import appeng.fluids.helper.IFluidInterfaceHost;
 import appeng.me.helpers.MachineSource;
 import net.minecraft.item.ItemStack;
 import net.minecraftforge.items.IItemHandler;
@@ -26,7 +25,6 @@ public final class FluixPoolManaHelper {
     }
     public static IItemHandler getUpgradeInventory(Object host) {
         if(host instanceof IInterfaceHost)return ((IInterfaceHost)host).getInterfaceDuality().getInventoryByName("upgrades");
-        if(host instanceof IFluidInterfaceHost)return ((IFluidInterfaceHost)host).getDualityFluidInterface().getInventoryByName("upgrades");
         return null;
     }
     public static IItemHandler getUpgradeInventory(IPart host) { return getUpgradeInventory((Object)host); }

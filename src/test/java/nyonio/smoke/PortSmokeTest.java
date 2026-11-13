@@ -1,28 +1,22 @@
 package nyonio.smoke;
 
 import appeng.core.Api;
-import appeng.fluids.parts.FluidInterfacePart;
-import appeng.fluids.tile.FluidInterfaceTileEntity;
 import appeng.tile.misc.InterfaceTileEntity;
 import appeng.tile.networking.CableBusTileEntity;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screen.MainMenuScreen;
-import net.minecraft.item.ItemStack;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
-import net.minecraftforge.items.IItemHandler;
 import nyonio.BotaniaApplie;
 import nyonio.IFluixManaReceiver;
 import nyonio.ae2.ManaStorageChannel;
 import nyonio.mixin.TilePoolManaAccessor;
 import nyonio.tile.TileFluixManaPool;
 import nyonio.terminal_interaction_integration.api.TerminalInteractionRegistry;
-import java.util.ArrayList;
-import java.util.List;
 
 /** Only loaded with -PsmokeTest, and never included in the release jar. */
 @Mod("botania_applie_smoke")
@@ -47,28 +41,10 @@ public final class PortSmokeTest {
                     "cable bus mana interface");
             require(IFluixManaReceiver.class.isAssignableFrom(InterfaceTileEntity.class),
                     "item interface mana interface");
-            require(IFluixManaReceiver.class.isAssignableFrom(FluidInterfaceTileEntity.class),
-                    "fluid interface mana interface");
             TileFluixManaPool pool = new TileFluixManaPool();
             require(pool instanceof TilePoolManaAccessor, "Botania pool mana accessor");
             require(pool.getType() == BotaniaApplie.FLUIX_POOL_TILE, "pool tile type");
 
-            // Constructors force transformation of both fluid-interface targets.
-            FluidInterfacePart part = new FluidInterfacePart(Api.instance().definitions()
-                    .parts().fluidIface().maybeStack(1)
-                    .orElseThrow(() -> new AssertionError("fluid interface part")));
-            appeng.api.parts.IPartHost host = org.mockito.Mockito.mock(appeng.api.parts.IPartHost.class);
-            FluidInterfaceTileEntity tile = (FluidInterfaceTileEntity) net.minecraftforge.registries.ForgeRegistries.TILE_ENTITIES
-                    .getValue(new ResourceLocation("appliedenergistics2", "fluid_interface")).create();
-            org.mockito.Mockito.when(host.getTile()).thenReturn(tile);
-            part.setPartHostInfo(appeng.api.util.AEPartLocation.UP, host, tile);
-            IItemHandler cards = part.getInventoryByName("upgrades");
-            require(cards != null && cards.getSlots() == 1, "fluid interface upgrade slot");
-            cards.insertItem(0, new ItemStack(BotaniaApplie.fluixPoolCard), false);
-            List<ItemStack> drops = new ArrayList<>();
-            part.getDrops(drops, false);
-            require(drops.size() == 1 && drops.get(0).getItem() == BotaniaApplie.fluixPoolCard,
-                    "fluid interface card drop");
             verified = true;
             BotaniaApplie.getLogger().info("PORT_SMOKE_SETUP_PASSED");
         }).whenComplete((ignored, failure) -> {

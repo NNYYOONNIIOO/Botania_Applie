@@ -26,6 +26,8 @@ This branch contains the Minecraft 1.16.5 Forge port of Botania Applie. It integ
 *   Drains the local buffer before drawing from the network and retries depositing it when connected
 *   Optional Jade integration displays exact long-valued mana storage and capacity with a fill bar
 
+The Fluix Mana Pool Card supports ME Interfaces in block and part forms. ME Fluid Interfaces are not supported.
+
 ***
 
 ### ME Terminal Integration

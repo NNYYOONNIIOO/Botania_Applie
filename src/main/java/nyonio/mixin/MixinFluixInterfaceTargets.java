@@ -6,8 +6,7 @@ import org.spongepowered.asm.mixin.Mixin;
 
 @Mixin(value = {
         appeng.tile.networking.CableBusTileEntity.class,
-        appeng.tile.misc.InterfaceTileEntity.class,
-        appeng.fluids.tile.FluidInterfaceTileEntity.class
+        appeng.tile.misc.InterfaceTileEntity.class
 }, remap = false)
 public abstract class MixinFluixInterfaceTargets implements IFluixManaReceiver {
     @Override
