@@ -14,7 +14,6 @@ import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
-import net.minecraftforge.fml.event.lifecycle.InterModEnqueueEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.fml.network.NetworkRegistry;
 import net.minecraftforge.fml.network.simple.SimpleChannel;
@@ -66,7 +65,6 @@ public final class BotaniaApplie {
         bus.addGenericListener(EntityType.class, this::registerEntities);
         bus.addListener(this::setup);
         bus.addListener(this::registerTerminalResources);
-        bus.addListener(this::enqueueIMC);
         MinecraftForge.EVENT_BUS.register(ChannelSparkNetwork.class);
         MinecraftForge.EVENT_BUS.register(new ManaCardTickHandler());
         MinecraftForge.EVENT_BUS.register(new ObedienceStickHandler());
@@ -83,7 +81,6 @@ public final class BotaniaApplie {
         Api.instance().registries().cell().addCellHandler(ManaCellHandler.INSTANCE);
         UpgradeModuleRegistration.register(fluixPoolCard, 1);
     }); }
-    private void enqueueIMC(InterModEnqueueEvent e) { if (net.minecraftforge.fml.ModList.get().isLoaded("theoneprobe")) nyonio.integration.top.TopIntegration.register(); }
     public static Logger getLogger() { return LOGGER; }
     public static SimpleChannel getNetwork() { return NETWORK; }
     public static ResourceLocation id(String name) { return new ResourceLocation(MODID,name); }

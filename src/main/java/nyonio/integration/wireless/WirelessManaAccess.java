@@ -106,25 +106,25 @@ public final class WirelessManaAccess {
         }
 
         for (int slot = 0; slot < player.inventory.getSizeInventory(); slot++) {
-            addTerminal(registry, terminals, player.inventory.getStackInSlot(slot), slot, false);
+            addTerminal(registry, terminals, player.inventory.getStackInSlot(slot), slot);
         }
 
         try {
-            IItemHandler baubles = top.theillusivec4.curios.api.CuriosApi.getCuriosHelper().getEquippedCurios(player).orElse(null);
-            if (baubles != null) {
-                for (int slot = 0; slot < baubles.getSlots(); slot++) {
-                    addTerminal(registry, terminals, baubles.getStackInSlot(slot), slot, true);
+            IItemHandler curios = top.theillusivec4.curios.api.CuriosApi.getCuriosHelper().getEquippedCurios(player).orElse(null);
+            if (curios != null) {
+                for (int slot = 0; slot < curios.getSlots(); slot++) {
+                    addTerminal(registry, terminals, curios.getStackInSlot(slot), slot);
                 }
             }
         } catch (Throwable ignored) {
-            // Baubles is optional; the main inventory remains usable without it.
+            // Curios is optional; the main inventory remains usable without it.
         }
 
         return terminals;
     }
 
     private static void addTerminal(IWirelessTermRegistry registry, List<TerminalReference> terminals,
-                                    ItemStack stack, int slot, boolean bauble) {
+                                    ItemStack stack, int slot) {
         if (stack == null || stack.isEmpty()) {
             return;
         }
@@ -137,7 +137,7 @@ public final class WirelessManaAccess {
 
             String encryptionKey = handler.getEncryptionKey(stack);
             if (encryptionKey != null && !encryptionKey.isEmpty()) {
-                terminals.add(new TerminalReference(stack, slot, bauble, handler, encryptionKey));
+                terminals.add(new TerminalReference(stack, slot, handler, encryptionKey));
             }
         } catch (Throwable ignored) {
             // A foreign wireless handler must not break Botania's mana lookup.
@@ -171,15 +171,13 @@ public final class WirelessManaAccess {
     private static final class TerminalReference {
         private final ItemStack stack;
         private final int slot;
-        private final boolean bauble;
         private final IWirelessTermHandler handler;
         private final String encryptionKey;
 
-        private TerminalReference(ItemStack stack, int slot, boolean bauble,
+        private TerminalReference(ItemStack stack, int slot,
                                   IWirelessTermHandler handler, String encryptionKey) {
             this.stack = stack;
             this.slot = slot;
-            this.bauble = bauble;
             this.handler = handler;
             this.encryptionKey = encryptionKey;
         }

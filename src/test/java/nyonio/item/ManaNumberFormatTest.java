@@ -22,6 +22,11 @@ public class ManaNumberFormatTest {
         assertTooltip("zh_cn", Locale.CHINA, Long.MAX_VALUE, "存储了 9,223,372,036,854,775,807 魔力");
     }
 
+    @Test
+    public void formatsRussianTooltipWithoutLeavingPlaceholderText() throws Exception {
+        assertTooltip("ru_ru", new Locale("ru", "RU"), 973000L, "Хранится 973\u00a0000 маны");
+    }
+
     private void assertTooltip(String localeName, Locale locale, long amount, String expected) throws Exception {
         LanguageMap originalLanguage = LanguageMap.getInstance();
         Locale originalLocale = Locale.getDefault();

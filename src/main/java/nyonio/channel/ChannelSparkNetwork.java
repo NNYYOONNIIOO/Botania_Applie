@@ -2139,8 +2139,7 @@ private static boolean attachOutputProxy(BridgeProxy proxy,
 
     /**
      * Finds the active AE2 node exposed by a block or a part on a cable bus.
-     * The reflection fallback covers AE2, AE2FC and Mekanism Energistics
-     * hosts without hard-linking this feature to any one implementation.
+     * Uses AE2's grid-host and multipart APIs.
      */
     public static IGridNode findGridNode(World world, BlockPos pos) {
         if (world == null || pos == null) {

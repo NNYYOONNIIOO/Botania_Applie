@@ -27,6 +27,8 @@
   "block.botania_applie.fluix_mana_pool": "Fluix Mana Pool",
   "botania_applie.tooltip.bytes_used": "%d/%d Bytes Used",
   "botania_applie.tooltip.stored_mana": "Stored %s Mana",
+  "botania_applie.tooltip.mana_capacity": "Capacity: %s Mana",
+  "plugin_botania_applie.mana": "Fluix Mana Pool: Mana Storage",
   "botania_applie.tooltip.shift_for_details": "Hold Shift for details",
   "botania_applie.status.online": "Online",
   "botania_applie.status.offline": "Offline",

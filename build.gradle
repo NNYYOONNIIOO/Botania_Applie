@@ -50,6 +50,7 @@ repositories {
     maven { url = 'https://modmaven.dev/'; content { includeGroup 'appeng' } }
     maven { url = 'https://maven.blamejared.com' }
     maven { url = 'https://maven.theillusivec4.top/' }
+    maven { url = 'https://cursemaven.com'; content { includeGroup 'curse.maven' } }
     flatDir { dirs 'libs' }
 }
 dependencies {
@@ -59,7 +60,7 @@ dependencies {
     implementation fg.deobf('bundled:terminal_interaction_integration:1.2.4-1.16.5')
     implementation fg.deobf('top.theillusivec4.curios:curios-forge:1.16.5-4.0.8.2')
     runtimeOnly fg.deobf('vazkii.patchouli:Patchouli:1.16.4-53.3')
-    compileOnly files('libs/theoneprobe-1.16-3.1.4-2-api.jar')
+    implementation fg.deobf("curse.maven:jade-324717:3910873")
     annotationProcessor 'org.spongepowered:mixin:0.8:processor'
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.mockito:mockito-inline:3.12.4'

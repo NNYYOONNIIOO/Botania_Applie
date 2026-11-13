@@ -9,8 +9,8 @@ import vazkii.botania.common.item.ModItems;
 
 /**
  * Makes channel sparks use the forest wand interaction path used by Botania
- * sparks. Some 1.12.2 client/server paths post the entity event without
- * invoking the custom entity callback, so handle the event explicitly.
+ * sparks. Handle the entity interaction event explicitly so both client and
+ * server apply the same forest-wand behavior.
  */
 @Mod.EventBusSubscriber(modid = BotaniaApplie.MODID)
 public final class ChannelSparkInteractionHandler {

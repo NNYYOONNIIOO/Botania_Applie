@@ -27,6 +27,8 @@
   "block.botania_applie.fluix_mana_pool": "福鲁伊克斯魔力池",
   "botania_applie.tooltip.bytes_used": "%d/%d 字节已使用",
   "botania_applie.tooltip.stored_mana": "存储了 %s 魔力",
+  "botania_applie.tooltip.mana_capacity": "魔力容量：%s",
+  "plugin_botania_applie.mana": "福鲁伊克斯魔力池：魔力存储",
   "botania_applie.tooltip.shift_for_details": "按住 Shift 查看详情",
   "botania_applie.status.online": "在线",
   "botania_applie.status.offline": "离线",
