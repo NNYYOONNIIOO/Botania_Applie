@@ -69,7 +69,10 @@ tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
     options.compilerArgs += ['-Xmaxerrs', '500']
 }
-processResources { filesMatching('META-INF/mods.toml') { expand version: project.version } }
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('META-INF/mods.toml') { expand version: project.version }
+}
 jar {
     manifest {
         attributes('Specification-Title': 'botania_applie', 'Specification-Vendor': 'Nyonio',
